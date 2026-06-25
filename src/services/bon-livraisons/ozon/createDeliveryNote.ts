@@ -1,5 +1,5 @@
 import { getOzonConfig } from "./getProviderConfig";
-import { OzonDeliveryNoteResponse } from "@/src/types/OzonDeliveryNote";
+import { OzonDeliveryNoteResponse } from "../../../types/ozon/OzonDeliveryNote";
 
 export async function createDeliveryNote(): Promise<OzonDeliveryNoteResponse> {
   const config = await getOzonConfig();
