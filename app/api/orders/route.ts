@@ -6,11 +6,29 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET() {
-  return NextResponse.json({
-    success: true,
-    message: "Orders API is working",
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, x-api-key",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
   });
+}
+
+export async function GET() {
+  return NextResponse.json(
+    {
+      success: true,
+      message: "Orders API is working",
+    },
+    {
+      headers: corsHeaders,
+    }
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -20,7 +38,10 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json(
         { error: "API key missing" },
-        { status: 401 }
+        {
+          status: 401,
+          headers: corsHeaders,
+        }
       );
     }
 
@@ -33,7 +54,10 @@ export async function POST(request: NextRequest) {
     if (keyError || !keyData || !keyData.is_active) {
       return NextResponse.json(
         { error: "Invalid API key" },
-        { status: 401 }
+        {
+          status: 401,
+          headers: corsHeaders,
+        }
       );
     }
 
@@ -71,7 +95,10 @@ export async function POST(request: NextRequest) {
     if (orderError) {
       return NextResponse.json(
         { error: orderError.message },
-        { status: 500 }
+        {
+          status: 500,
+          headers: corsHeaders,
+        }
       );
     }
 
@@ -82,18 +109,25 @@ export async function POST(request: NextRequest) {
       })
       .eq("api_key", apiKey);
 
-    return NextResponse.json({
-      success: true,
-      order_id: order.id,
-      store_id: keyData.store_id,
-    });
-
+    return NextResponse.json(
+      {
+        success: true,
+        order_id: order.id,
+        store_id: keyData.store_id,
+      },
+      {
+        headers: corsHeaders,
+      }
+    );
   } catch (error) {
     console.error(error);
 
     return NextResponse.json(
       { error: "Server error" },
-      { status: 500 }
+      {
+        status: 500,
+        headers: corsHeaders,
+      }
     );
   }
 }
