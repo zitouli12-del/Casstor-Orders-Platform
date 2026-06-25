@@ -40,6 +40,7 @@ interface ShippingProvider {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  store_id: number | null;
 }
 
 // Configuration des transporteurs disponibles
@@ -121,9 +122,42 @@ export default function TransporteursPage() {
 
   async function fetchProviders() {
     setLoading(true);
+    
+    // Get authenticated user
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      console.error("Error getting user:", userError);
+      setToast({ message: "Erreur d'authentification", type: 'error' });
+      setLoading(false);
+      return;
+    }
+
+    // Get user's store
+    const {
+      data: store,
+      error: storeError,
+    } = await supabase
+      .from("stores")
+      .select("id")
+      .eq("owner_id", user.id)
+      .single();
+
+    if (storeError || !store) {
+      console.error("Error getting store:", storeError);
+      setToast({ message: "Erreur lors de la récupération du magasin", type: 'error' });
+      setLoading(false);
+      return;
+    }
+
+    // Load only providers belonging to this store
     const { data, error } = await supabase
       .from("shipping_providers")
       .select("*")
+      .eq("store_id", store.id)
       .order("created_at", { ascending: true });
 
     if (!error && data) {
@@ -305,7 +339,12 @@ async function fetchApiKey() {
       return;
     }
 
-    const existingProvider = providers.find(p => p.provider_code === selectedProviderCode);
+    const existingProvider = providers.find(
+  p =>
+    p.provider_code === selectedProviderCode &&
+    p.store_id === store?.id
+);
+
     if (existingProvider) {
       setToast({ message: "Ce transporteur est déjà enregistré", type: 'error' });
       return;
@@ -854,7 +893,10 @@ async function fetchApiKey() {
                   >
                     <option value="">Sélectionner un transporteur</option>
                     {AVAILABLE_PROVIDERS.map((provider) => {
-                      const isExisting = providers.some(p => p.provider_code === provider.code);
+                      // Check if this provider already exists for the current store
+                      const isExisting = providers.some(
+                        p => p.provider_code === provider.code
+                      );
                       return (
                         <option 
                           key={provider.code} 
