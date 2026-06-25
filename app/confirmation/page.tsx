@@ -151,13 +151,17 @@ const openModal = (order: any) => {
     setUpdatingStatus(orderId);
     setToast(null);
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("orders")
       .update({
         status: newStatus,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", orderId);
+      .eq("id", orderId)
+      .select();
+
+    console.log("STATUS UPDATE DATA =", data);
+    console.log("STATUS UPDATE ERROR =", error);
 
     if (error) {
       console.error("Status update error:", error);
@@ -201,10 +205,14 @@ const openModal = (order: any) => {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("orders")
       .update(updateData)
-      .eq("id", selectedOrder.id);
+      .eq("id", selectedOrder.id)
+      .select();
+
+    console.log("SAVE UPDATE DATA =", data);
+    console.log("SAVE UPDATE ERROR =", error);
 
     if (error) {
       console.error("Update error:", error);
