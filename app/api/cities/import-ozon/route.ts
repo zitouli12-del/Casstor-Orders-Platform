@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { importOzonCities } from "@/src/services/shipping/ozon/importOzonCities";
+import { importOzonCities } from "@/src/services/cities/importOzonCities";
 
 export async function GET() {
   try {
-    const result =
-      await importOzonCities();
+    const result = await importOzonCities();
 
     return NextResponse.json({
       success: true,
