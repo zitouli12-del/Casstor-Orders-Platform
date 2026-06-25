@@ -285,21 +285,20 @@ async function fetchApiKey() {
   };
 
   const handleAddProvider = async () => {
+    // Get authenticated user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    console.log("USER =", user);
 
-const {
-  data: { user },
-} = await supabase.auth.getUser();
-
-console.log("USER =", user);
-
-const { data: store, error: storeError } = await supabase
-  .from("stores")
-  .select("id")
-  .eq("owner_id", user?.id)
-  .single();
-
-console.log("STORE =", store);
-console.log("STORE ERROR =", storeError);
+    // Get user's store
+    const { data: store, error: storeError } = await supabase
+      .from("stores")
+      .select("*")
+      .eq("owner_id", user?.id)
+      .single();
+    console.log("STORE =", store);
+    console.log("STORE ERROR =", storeError);
 
     if (!selectedProviderCode) {
       setToast({ message: "Veuillez sélectionner un transporteur", type: 'error' });
@@ -339,7 +338,9 @@ console.log("STORE ERROR =", storeError);
       return;
     }
 
-    const initialData: { [key: string]: any } = {
+    // Prepare insert data with store_id
+    const initialData: { [key: string]: any } = { 
+      store_id: store?.id,
       provider_code: selectedProviderCode,
       provider_name: selectedProvider.name,
       is_active: false,
@@ -350,6 +351,8 @@ console.log("STORE ERROR =", storeError);
     fields.forEach(field => {
       initialData[field] = newProviderFields[field] || "";
     });
+
+    console.log("INSERT DATA =", initialData);
 
     console.log("=== DIAGNOSTIC INSERTION TRANSPORTEUR ===");
     console.log("Selected provider code:", selectedProviderCode);
