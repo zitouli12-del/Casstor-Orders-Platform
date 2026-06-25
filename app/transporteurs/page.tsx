@@ -285,6 +285,22 @@ async function fetchApiKey() {
   };
 
   const handleAddProvider = async () => {
+
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+console.log("USER =", user);
+
+const { data: store, error: storeError } = await supabase
+  .from("stores")
+  .select("id")
+  .eq("owner_id", user?.id)
+  .single();
+
+console.log("STORE =", store);
+console.log("STORE ERROR =", storeError);
+
     if (!selectedProviderCode) {
       setToast({ message: "Veuillez sélectionner un transporteur", type: 'error' });
       return;
