@@ -3,32 +3,19 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/src/lib/supabase";
 import {
-  Truck,
-  Plus,
-  Save,
-  TestTube,
-  X,
-  CheckCircle2,
-  AlertCircle,
-  Eye,
-  EyeOff,
   RefreshCw,
-  Search,
-  ChevronDown,
-  Edit,
-  Trash2,
   Copy,
-  Check,
-  Power,
-  PowerOff,
   Globe,
   Key,
-  User,
-  Link,
-  Calendar,
-  Hash,
-  Clock
+  CheckCircle2,
+  AlertCircle,
+  Power,
+  PowerOff
 } from "lucide-react";
+import TransporteursHeader from "@/src/components/transporteurs/TransporteursHeader";
+import TransporteursSearchBar from "@/src/components/transporteurs/TransporteursSearchBar";
+import TransporteursProvidersGrid from "@/src/components/transporteurs/TransporteursProvidersGrid";
+import AddProviderModal from "@/src/components/transporteurs/AddProviderModal";
 
 interface ShippingProvider {
   id: string;
@@ -458,155 +445,11 @@ async function fetchApiKey() {
     return isActive ? <Power size={14} className="text-green-400" /> : <PowerOff size={14} className="text-red-400" />;
   };
 
-  const renderModalField = (fieldName: string) => {
-    const fieldConfig: { [key: string]: { icon: any, label: string, placeholder: string, type?: string } } = {
-      client_id: {
-        icon: User,
-        label: "Client ID",
-        placeholder: "Entrez le Client ID"
-      },
-      api_key: {
-        icon: Key,
-        label: "API Key",
-        placeholder: "Entrez l'API Key",
-        type: "password"
-      },
-      webhook_url: {
-        icon: Link,
-        label: "Webhook URL (optionnel)",
-        placeholder: "https://example.com/webhook (optionnel)"
-      }
-    };
-
-    const config = fieldConfig[fieldName];
-    if (!config) return null;
-
-    const Icon = config.icon;
-    const value = newProviderFields[fieldName] || "";
-    const isApiKey = fieldName === "api_key";
-    const requiredFields = getRequiredFields(selectedProviderCode);
-    const isRequired = requiredFields.includes(fieldName);
-
-    return (
-      <div key={fieldName}>
-        <label className="text-xs font-medium text-slate-400 flex items-center gap-1.5 mb-1.5">
-          <Icon size={14} />
-          {config.label}
-          {isRequired && <span className="text-red-400 text-xs">*</span>}
-        </label>
-        <div className="flex gap-2">
-          <div className="flex-1 relative">
-            <input
-              type={isApiKey && !showModalApiKey ? "password" : "text"}
-              value={value}
-              onChange={(e) => setNewProviderFields(prev => ({ ...prev, [fieldName]: e.target.value }))}
-              className="w-full px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-slate-200 focus:outline-none focus:border-blue-500 text-sm"
-              placeholder={config.placeholder}
-            />
-            {isApiKey && (
-              <button
-                onClick={() => setShowModalApiKey(!showModalApiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                {showModalApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            )}
-          </div>
-          <button
-            onClick={() => copyToClipboard(value)}
-            className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
-            title="Copier"
-          >
-            <Copy size={16} className="text-slate-300" />
-          </button>
-        </div>
-        {!isRequired && (
-          <p className="text-xs text-slate-500 mt-1">Optionnel - peut être laissé vide</p>
-        )}
-      </div>
-    );
-  };
-
-  const renderCardField = (provider: ShippingProvider, fieldName: string, isEditing: boolean) => {
-    const fieldConfig: { [key: string]: { icon: any, label: string, placeholder: string, type?: string } } = {
-      client_id: {
-        icon: User,
-        label: "Client ID",
-        placeholder: "Client ID"
-      },
-      api_key: {
-        icon: Key,
-        label: "API Key",
-        placeholder: "API Key",
-        type: "password"
-      },
-      webhook_url: {
-        icon: Link,
-        label: "Webhook URL (optionnel)",
-        placeholder: "https://example.com/webhook"
-      }
-    };
-
-    const config = fieldConfig[fieldName];
-    if (!config) return null;
-
-    const Icon = config.icon;
-    const value = isEditing ? (editedFields[fieldName] || "") : (provider[fieldName as keyof ShippingProvider] || "");
-    const isApiKey = fieldName === "api_key";
-    const showKey = showApiKeys[provider.id] || false;
-    const requiredFields = getRequiredFields(provider.provider_code);
-    const isRequired = requiredFields.includes(fieldName);
-
-    return (
-      <div key={fieldName}>
-        <label className="text-xs font-medium text-slate-400 flex items-center gap-1.5 mb-1.5">
-          <Icon size={14} />
-          {config.label}
-          {isRequired && <span className="text-red-400 text-xs">*</span>}
-        </label>
-        <div className="flex gap-2">
-          <div className="flex-1 relative">
-            <input
-              type={isApiKey && !showKey ? "password" : "text"}
-              value={value}
-              onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-              disabled={!isEditing}
-              className={`w-full px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-slate-200 text-sm ${
-                isEditing ? 'focus:outline-none focus:border-blue-500' : 'opacity-60 cursor-not-allowed'
-              }`}
-              placeholder={config.placeholder}
-            />
-            {isApiKey && isEditing && (
-              <button
-                onClick={() => toggleShowApiKey(provider.id)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            )}
-          </div>
-          {isEditing && (
-            <button
-              onClick={() => copyToClipboard(value)}
-              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
-              title="Copier"
-            >
-              <Copy size={16} className="text-slate-300" />
-            </button>
-          )}
-        </div>
-        {!isRequired && !isEditing && (
-          <p className="text-xs text-slate-500 mt-1">Optionnel</p>
-        )}
-      </div>
-    );
-  };
-
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center text-slate-400 font-medium bg-[#0f172a]">
+      <div className="min-h-[60vh] flex items-center justify-center text-slate-400 font-medium bg-slate-50">
         <div className="flex flex-col items-center gap-3">
-          <RefreshCw size={32} className="animate-spin text-blue-500" />
+          <RefreshCw size={32} className="animate-spin text-orange-500" />
           Chargement des transporteurs...
         </div>
       </div>
@@ -614,194 +457,61 @@ async function fetchApiKey() {
   }
 
   return (
-    <div className="space-y-8 bg-[#0f172a] min-h-screen text-slate-100 p-2 sm:p-4 md:p-8">
+    <div className="space-y-6 bg-slate-50 min-h-screen p-4 sm:p-6 md:p-8">
       
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-xl flex items-center gap-3 ${
-          toast.type === 'success' ? 'bg-green-500/90 border border-green-400 text-white' : 
-          toast.type === 'error' ? 'bg-red-500/90 border border-red-400 text-white' :
-          'bg-blue-500/90 border border-blue-400 text-white'
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-lg flex items-center gap-3 ${
+          toast.type === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 
+          toast.type === 'error' ? 'bg-red-50 border border-red-200 text-red-800' :
+          'bg-blue-50 border border-blue-200 text-blue-800'
         }`}>
-          {toast.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+          {toast.type === 'success' ? <CheckCircle2 size={20} className="text-green-600" /> : <AlertCircle size={20} className="text-red-600" />}
           <span className="font-medium">{toast.message}</span>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
-            <Truck className="text-orange-400" size={32} />
-            Transporteurs
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Gérez les transporteurs et leurs informations API.
-          </p>
-        </div>
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 font-semibold transition-colors shadow-lg shadow-orange-500/20 self-start md:self-auto"
-        >
-          <Plus size={20} />
-          Ajouter un transporteur
-        </button>
-      </div>
+      <TransporteursHeader
+        onAddProvider={() => setIsAddModalOpen(true)}
+      />
 
-      {/* Search Bar */}
-      <div className="bg-[#1f2937] border border-slate-800 p-5 rounded-xl shadow-xl">
-        <div className="relative">
-          <Search className="absolute left-3 top-3.5 text-slate-500" size={18} />
-          <input
-            type="text"
-            placeholder="Rechercher par nom, code ou client ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 rounded-lg bg-[#0f172a] border border-slate-700 text-slate-200 focus:outline-none focus:border-slate-500 text-sm transition-all"
-          />
-        </div>
-      </div>
+      <TransporteursSearchBar
+        value={search}
+        onChange={setSearch}
+      />
 
-      {/* Providers Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filteredProviders.length === 0 ? (
-          <div className="col-span-full bg-[#1f2937] border border-slate-700 rounded-xl p-12 text-center">
-            <Truck size={48} className="mx-auto mb-3 text-slate-600 opacity-50" />
-            <p className="text-slate-400 font-medium">Aucun transporteur trouvé</p>
-            <p className="text-sm text-slate-500 mt-1">Cliquez sur "Ajouter un transporteur" pour commencer</p>
-          </div>
-        ) : (
-          filteredProviders.map((provider) => {
-            const isEditing = editingId === provider.id;
-            const isSavingProvider = isSaving[provider.id] || false;
-            const isTestingProvider = isTesting[provider.id] || false;
-            const fields = getProviderFields(provider.provider_code);
-            const providerLabel = getProviderLabel(provider.provider_code);
-
-            return (
-              <div
-                key={provider.id}
-                className="bg-[#1f2937] border border-slate-700 rounded-xl overflow-hidden shadow-xl hover:border-slate-600 transition-all"
-              >
-                {/* Card Header */}
-                <div className="bg-[#111827] px-5 py-4 border-b border-slate-700 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400">
-                      <Truck size={20} />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white">{provider.provider_name}</h3>
-                      <p className="text-xs text-slate-400 font-mono">{provider.provider_code}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{providerLabel}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1.5 ${getActiveStatusColor(provider.is_active)}`}>
-                      {getStatusIcon(provider.is_active)}
-                      {provider.is_active ? 'Actif' : 'Inactif'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Card Body */}
-                <div className="p-5 space-y-4">
-                  {fields.map(fieldName => renderCardField(provider, fieldName, isEditing))}
-
-                  {isEditing && (
-                    <div className="flex items-center justify-between pt-3 border-t border-slate-700">
-                      <div className="flex items-center gap-2">
-                        {editedFields.is_active ? (
-                          <Power size={16} className="text-green-400" />
-                        ) : (
-                          <PowerOff size={16} className="text-red-400" />
-                        )}
-                        <span className="text-sm font-medium text-slate-300">
-                          {editedFields.is_active ? 'Actif' : 'Inactif'}
-                        </span>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={editedFields.is_active || false}
-                          onChange={(e) => handleFieldChange("is_active", e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                      </label>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap gap-4 pt-3 border-t border-slate-700 text-xs text-slate-500">
-                    <div className="flex items-center gap-1">
-                      <Calendar size={12} />
-                      Créé: {new Date(provider.created_at).toLocaleDateString("fr-FR")}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Clock size={12} />
-                      Mis à jour: {new Date(provider.updated_at).toLocaleDateString("fr-FR")}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {isEditing ? (
-                      <>
-                        <button
-                          onClick={() => handleSave(provider.id)}
-                          disabled={isSavingProvider}
-                          className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-                        >
-                          <Save size={16} />
-                          {isSavingProvider ? "Enregistrement..." : "Enregistrer"}
-                        </button>
-                        <button
-                          onClick={cancelEditing}
-                          className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold rounded-lg transition-colors"
-                        >
-                          <X size={16} />
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => startEditing(provider)}
-                          className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-                        >
-                          <Edit size={16} />
-                          Modifier
-                        </button>
-                        <button
-                          onClick={() => handleTestConnection(provider.id)}
-                          disabled={isTestingProvider}
-                          className="px-4 py-2 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 border border-orange-500/20"
-                        >
-                          {isTestingProvider ? (
-                            <RefreshCw size={16} className="animate-spin" />
-                          ) : (
-                            <TestTube size={16} />
-                          )}
-                          {isTestingProvider ? "Test..." : "Tester"}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+      <TransporteursProvidersGrid
+        providers={filteredProviders}
+        editingId={editingId}
+        editedFields={editedFields}
+        isSaving={isSaving}
+        isTesting={isTesting}
+        showApiKeys={showApiKeys}
+        onStartEditing={startEditing}
+        onCancelEditing={cancelEditing}
+        onFieldChange={handleFieldChange}
+        onSave={handleSave}
+        onTestConnection={handleTestConnection}
+        onToggleShowApiKey={toggleShowApiKey}
+        onCopyToClipboard={copyToClipboard}
+        getProviderFields={getProviderFields}
+        getProviderLabel={getProviderLabel}
+        getRequiredFields={getRequiredFields}
+        getActiveStatusColor={getActiveStatusColor}
+        getStatusIcon={getStatusIcon}
+      />
 
       {/* API Integration Card */}
-      <div className="bg-[#1f2937] border border-slate-700 rounded-xl overflow-hidden shadow-xl">
-        <div className="bg-[#111827] px-5 py-4 border-b border-slate-700">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <Key size={20} className="text-orange-400" />
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+        <div className="bg-white px-6 py-4 border-b border-slate-200">
+          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+            <Key size={20} className="text-orange-500" />
             🔑 API Integration
           </h3>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="p-6 space-y-4">
           <div>
-            <label className="text-xs font-medium text-slate-400 flex items-center gap-1.5 mb-1.5">
+            <label className="text-xs font-medium text-slate-600 flex items-center gap-1.5 mb-1.5">
               <Globe size={14} />
               API Endpoint
             </label>
@@ -811,21 +521,21 @@ async function fetchApiKey() {
                   type="text"
                   value={API_URL}
                   disabled
-                  className="w-full px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-slate-200 text-sm opacity-60 cursor-not-allowed"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 text-sm cursor-not-allowed"
                 />
               </div>
               <button
                 onClick={() => copyToClipboard(API_URL)}
-                className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200"
                 title="Copier"
               >
-                <Copy size={16} className="text-slate-300" />
+                <Copy size={16} className="text-slate-600" />
               </button>
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-medium text-slate-400 flex items-center gap-1.5 mb-1.5">
+            <label className="text-xs font-medium text-slate-600 flex items-center gap-1.5 mb-1.5">
               <Key size={14} />
               API Key
             </label>
@@ -835,122 +545,49 @@ async function fetchApiKey() {
                   type="password"
                   value={apiKey}
                   disabled
-                  className="w-full px-3 py-2 rounded-lg bg-[#0f172a] border border-slate-700 text-slate-200 text-sm opacity-60 cursor-not-allowed"
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 text-sm cursor-not-allowed"
                 />
               </div>
               <button
                 onClick={() => copyToClipboard(apiKey)}
-                className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200"
                 title="Copier"
               >
-                <Copy size={16} className="text-slate-300" />
+                <Copy size={16} className="text-slate-600" />
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Add Provider Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-[#1f2937] border border-slate-700 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="bg-[#111827] px-6 py-4 border-b border-slate-700 flex justify-between items-center sticky top-0 z-10">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <Plus size={20} className="text-orange-400" />
-                Ajouter un transporteur
-              </h2>
-              <button
-                onClick={() => {
-                  setIsAddModalOpen(false);
-                  setSelectedProviderCode("");
-                  setNewProviderFields({});
-                  setShowModalApiKey(false);
-                }}
-                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-              >
-                <X size={20} className="text-slate-400" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="text-xs font-medium text-slate-400 flex items-center gap-1.5 mb-1.5">
-                  <Truck size={14} />
-                  Transporteur
-                </label>
-                <div className="relative">
-                  <select
-                    value={selectedProviderCode}
-                    onChange={(e) => {
-                      const code = e.target.value;
-                      setSelectedProviderCode(code);
-                      setNewProviderFields({});
-                      setShowModalApiKey(false);
-                    }}
-                    className="w-full px-4 py-2.5 rounded-lg bg-[#0f172a] border border-slate-700 text-slate-200 focus:outline-none focus:border-blue-500 text-sm appearance-none cursor-pointer"
-                  >
-                    <option value="">Sélectionner un transporteur</option>
-                    {AVAILABLE_PROVIDERS.map((provider) => {
-                      // Check if this provider already exists for the current store
-                      const isExisting = providers.some(
-                        p => p.provider_code === provider.code
-                      );
-                      return (
-                        <option 
-                          key={provider.code} 
-                          value={provider.code}
-                          disabled={isExisting}
-                          className={isExisting ? "text-slate-500" : "text-slate-200"}
-                        >
-                          {provider.name} {isExisting ? "(déjà enregistré)" : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-                </div>
-              </div>
-
-              {selectedProviderCode && (
-                <div className="space-y-4 pt-2 border-t border-slate-700">
-                  {getProviderFields(selectedProviderCode).map(fieldName => renderModalField(fieldName))}
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="bg-[#111827] px-6 py-4 border-t border-slate-700 flex flex-wrap gap-3 justify-end sticky bottom-0">
-              <button
-                onClick={() => {
-                  setIsAddModalOpen(false);
-                  setSelectedProviderCode("");
-                  setNewProviderFields({});
-                  setShowModalApiKey(false);
-                }}
-                className="px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-lg transition-colors"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleAddProvider}
-                disabled={!selectedProviderCode || isAdding}
-                className={`px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg transition-colors flex items-center gap-2 ${
-                  (!selectedProviderCode || isAdding) ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
-                {isAdding ? (
-                  <RefreshCw size={18} className="animate-spin" />
-                ) : (
-                  <Plus size={18} />
-                )}
-                {isAdding ? "Ajout..." : "Ajouter"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AddProviderModal
+        isOpen={isAddModalOpen}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setSelectedProviderCode("");
+          setNewProviderFields({});
+          setShowModalApiKey(false);
+        }}
+        onAdd={handleAddProvider}
+        isAdding={isAdding}
+        selectedProviderCode={selectedProviderCode}
+        onProviderSelect={(code) => {
+          setSelectedProviderCode(code);
+          setNewProviderFields({});
+          setShowModalApiKey(false);
+        }}
+        newProviderFields={newProviderFields}
+        onFieldChange={(field, value) => {
+          setNewProviderFields(prev => ({ ...prev, [field]: value }));
+        }}
+        showApiKey={showModalApiKey}
+        onToggleShowApiKey={() => setShowModalApiKey(!showModalApiKey)}
+        onCopyToClipboard={copyToClipboard}
+        availableProviders={AVAILABLE_PROVIDERS}
+        existingProviders={providers}
+        getProviderFields={getProviderFields}
+        getRequiredFields={getRequiredFields}
+      />
     </div>
   );
 }

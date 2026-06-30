@@ -23,8 +23,13 @@ export default function ParcelSelectionTable({
   };
 
   const handleCreateBL = async () => {
+    console.log("BUTTON CLICKED");
+    console.log("selectedIds =", selectedIds);
+
     try {
       setLoading(true);
+
+      console.log("Before fetch");
 
       const result =
         await createBonLivraison(
@@ -32,14 +37,13 @@ export default function ParcelSelectionTable({
           selectedIds
         );
 
-      setSelectedIds([]);
+      console.log("After fetch");
 
-      console.log(
-        "CREATE BL RESULT =",
-        result
-      );
+      console.log(result);
+
+      setSelectedIds([]);
     } catch (error) {
-      console.error(error);
+      console.error("ERROR =", error);
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,8 @@
 export interface Order {
   id: number;
 
+  store_id: number;
+
   created_at: string;
   updated_at: string | null;
 
@@ -8,7 +10,7 @@ export interface Order {
 
   name: string | null;
   phone: string | null;
-  city: string | null;
+  city: string |null;
   address: string | null;
 
   color: string | null;

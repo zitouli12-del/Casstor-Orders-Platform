@@ -1,17 +1,18 @@
 import { getOzonConfig } from "./getProviderConfig";
 
 export async function addParcelsToDeliveryNote(
-  ref: string,
+  storeId: number,
+  blRef: string,
   trackingNumbers: string[]
 ) {
-  const config = await getOzonConfig();
+  const config = await getOzonConfig(storeId);
 
   const url =
     `https://api.ozonexpress.ma/customers/${config.clientId}/${config.apiKey}/add-parcel-to-delivery-note`;
 
   const formData = new FormData();
 
-  formData.append("Ref", ref);
+  formData.append("Ref", blRef);
 
   trackingNumbers.forEach(
     (trackingNumber, index) => {

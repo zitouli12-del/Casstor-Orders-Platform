@@ -18,16 +18,18 @@ export async function processOrder(
     );
 
     const response = await sendParcel(
-      payload
+      payload,
+      order.store_id
     );
 
     const trackingNumber =
       response.trackingNumber;
 
-    await saveParcel(
-      order.id,
-      trackingNumber
-    );
+await saveParcel(
+  order.id,
+  order.store_id,
+  trackingNumber
+);
 
     return {
       success: true,

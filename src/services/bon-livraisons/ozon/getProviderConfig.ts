@@ -5,23 +5,36 @@ export interface OzonConfig {
   apiKey: string;
 }
 
-export async function getOzonConfig(): Promise<OzonConfig> {
+export async function getOzonConfig(
+  storeId: number
+): Promise<OzonConfig> {
+
   const { data, error } = await supabase
     .from("shipping_providers")
     .select("*")
     .eq("provider_code", "ozon")
-    .single();
+    .eq("store_id", storeId);
 
-  if (error || !data) {
-    throw new Error("Configuration Ozon introuvable");
+  console.log("STORE ID =", storeId);
+  console.log("SUPABASE ERROR =", error);
+  console.log("SUPABASE DATA =", data);
+
+  if (error || !data || data.length === 0) {
+    throw new Error(
+      `Configuration Ozon introuvable pour le store ${storeId}`
+    );
   }
 
-  if (!data.client_id || !data.api_key) {
-    throw new Error("Client ID ou API Key Ozon manquant");
+  const provider = data[0];
+
+  if (!provider.client_id || !provider.api_key) {
+    throw new Error(
+      "Client ID ou API Key Ozon manquant"
+    );
   }
 
   return {
-    clientId: data.client_id,
-    apiKey: data.api_key,
+    clientId: provider.client_id,
+    apiKey: provider.api_key,
   };
 }

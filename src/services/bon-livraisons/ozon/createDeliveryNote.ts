@@ -1,8 +1,11 @@
 import { getOzonConfig } from "./getProviderConfig";
 import { OzonDeliveryNoteResponse } from "../../../types/ozon/OzonDeliveryNote";
 
-export async function createDeliveryNote(): Promise<OzonDeliveryNoteResponse> {
-  const config = await getOzonConfig();
+export async function createDeliveryNote(
+  storeId: number
+): Promise<OzonDeliveryNoteResponse> {
+
+  const config = await getOzonConfig(storeId);
 
   const url =
     `https://api.ozonexpress.ma/customers/${config.clientId}/${config.apiKey}/add-delivery-note`;
@@ -11,13 +14,9 @@ export async function createDeliveryNote(): Promise<OzonDeliveryNoteResponse> {
     method: "POST",
   });
 
-  const responseText =
-    await response.text();
+  const responseText = await response.text();
 
-  console.log(
-    "RAW RESPONSE =",
-    responseText
-  );
+  console.log("RAW RESPONSE =", responseText);
 
   let data: any;
 
@@ -44,9 +43,7 @@ export async function createDeliveryNote(): Promise<OzonDeliveryNoteResponse> {
     data?.["ADD-BL"]?.["NEW-BL"]?.["ID"];
 
   if (!blRef || !providerDeliveryNoteId) {
-    throw new Error(
-      "Réponse Ozon invalide"
-    );
+    throw new Error("Réponse Ozon invalide");
   }
 
   return {

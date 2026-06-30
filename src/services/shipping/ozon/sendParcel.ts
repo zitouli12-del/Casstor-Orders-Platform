@@ -2,9 +2,10 @@ import { getOzonConfig } from "../../bon-livraisons/ozon/getProviderConfig";
 import { OzonParcelPayload } from "@/src/types/ozon/OzonParcel";
 
 export async function sendParcel(
-  payload: OzonParcelPayload
+  payload: OzonParcelPayload,
+  storeId: number
 ) {
-  const config = await getOzonConfig();
+  const config = await getOzonConfig(storeId);
 
   const url = `https://api.ozonexpress.ma/customers/${config.clientId}/${config.apiKey}/add-parcel`;
 

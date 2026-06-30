@@ -1,12 +1,16 @@
 import { supabase } from "@/src/lib/supabase";
+import { getCurrentStore } from "@/src/lib/getCurrentStore";
 import { processOrder } from "./processOrder";
 
 export async function processOrdersWorkflow(
   orderIds: number[]
 ) {
+  const store = await getCurrentStore();
+
   const { data: orders, error } = await supabase
     .from("orders")
     .select("*")
+    .eq("store_id", store.id)
     .in("id", orderIds);
 
   if (error) {

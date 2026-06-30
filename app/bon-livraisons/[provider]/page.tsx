@@ -1,5 +1,6 @@
 import { supabase } from "@/src/lib/supabase";
 import ParcelSelectionTable from "@/src/components/bon-livraisons/ParcelSelectionTable";
+import { getCurrentStore } from "@/src/lib/getCurrentStore";
 
 interface Props {
   params: Promise<{
@@ -11,25 +12,28 @@ export default async function ProviderPage({
   params,
 }: Props) {
   const { provider } = await params;
+  const store = await getCurrentStore();
 
   const { data: parcels, error } = await supabase
-    .from("shipping")
-    .select(`
-      *,
-      orders (
-        id,
-        name,
-        city,
-        price
-      )
-    `)
-    .eq("provider", provider)
-    .is("bon_livraison_id", null);
+.from("shipping")
+.select(`
+  *,
+  orders (
+    id,
+    name,
+    city,
+    price
+  )
+`)
+.eq("store_id", store.id)
+.eq("provider", provider)
+.is("bon_livraison_id", null);
 
   const { data: bonLivraisons } = await supabase
-    .from("bon_livraisons")
-    .select("*")
-    .eq("provider", provider)
+.from("bon_livraisons")
+.select("*")
+.eq("store_id", store.id)
+.eq("provider", provider)
     .order("created_at", {
       ascending: false,
     });
