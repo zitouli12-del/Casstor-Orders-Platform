@@ -62,33 +62,36 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-
+    
     const {
-      product,
-      name,
-      phone,
-      city,
-      address,
-      color,
-      size,
-      price,
-    } = body;
+    product,
+    name,
+    phone,
+    city,
+    address,
+    color,
+    size,
+    price,
+    source,
+} = body;
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
+    
       .insert({
-        store_id: keyData.store_id,
-        product,
-        name,
-        phone,
-        city,
-        address,
-        color,
-        size,
-        price,
-        status: "nouvelle",
-        source: "api",
-      })
+  store_id: keyData.store_id,
+  product,
+  name,
+  phone,
+  city,
+  address,
+  color,
+  size,
+  price,
+  status: "nouvelle",
+  source,
+})
+
       .select()
       .single();
 
