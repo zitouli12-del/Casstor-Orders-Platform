@@ -1,5 +1,5 @@
 "use client";
-
+import MobileOrdersList from "@/src/components/confirmation/MobileOrdersList";
 import OrdersTable from "@/src/components/confirmation/OrdersTable";
 import SearchBar from "@/src/components/confirmation/SearchBar";
 import DashboardCards from "@/src/components/confirmation/DashboardCards";
@@ -10,6 +10,7 @@ import CityAutocomplete from "@/src/components/confirmation/CityAutocomplete";
 import { useEffect, useState } from "react";
 import { supabase } from "@/src/lib/supabase";
 import { 
+
   CheckCircle2, 
   PhoneOff, 
   Package,
@@ -360,13 +361,29 @@ if (loading) {
   value={search}
   onChange={setSearch}
 />
-<OrdersTable
-  filteredOrders={filteredOrders}
-  updatingStatus={updatingStatus}
-  handleStatusChange={handleStatusChange}
-  openModal={openModal}
-  getStatusColor={getStatusColor}
-/>
+<>
+  <div className="hidden md:block">
+    <OrdersTable
+      filteredOrders={filteredOrders}
+      allOrders={orders}
+      updatingStatus={updatingStatus}
+      handleStatusChange={handleStatusChange}
+      openModal={openModal}
+      getStatusColor={getStatusColor}
+    />
+  </div>
+
+  <div className="md:hidden">
+    <MobileOrdersList
+      filteredOrders={filteredOrders}
+      allOrders={orders}
+      updatingStatus={updatingStatus}
+      handleStatusChange={handleStatusChange}
+      openModal={openModal}
+      getStatusColor={getStatusColor}
+    />
+  </div>
+</>
 
       {/* Modal */}
       <EditOrderModal

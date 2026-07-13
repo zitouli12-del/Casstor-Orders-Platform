@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
@@ -11,7 +13,13 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const pathname = usePathname();
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [pathname]);
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -21,26 +29,30 @@ export default function DashboardLayout({
       />
 
       {isSidebarOpen && (
-        <div
+        <button
+          type="button"
+          aria-label="Fermer le menu"
           onClick={() => setIsSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-black/30 lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-[1px] lg:hidden"
         />
       )}
 
       <div
-        className={`flex flex-1 flex-col transition-all duration-300 ${
+        className={`flex min-w-0 flex-1 flex-col transition-[padding] duration-300 ${
           isSidebarOpen ? "lg:pl-72" : ""
         }`}
       >
         <Topbar
-          onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          onMenuClick={() =>
+            setIsSidebarOpen((current) => !current)
+          }
         />
 
-<main className="flex-1 bg-slate-50 p-8">
-  <div className="w-full px-2">
-    {children}
-  </div>
-</main>
+        <main className="min-w-0 flex-1 bg-slate-50 p-3 sm:p-4 lg:p-8">
+          <div className="w-full min-w-0">
+            {children}
+          </div>
+        </main>
       </div>
     </div>
   );

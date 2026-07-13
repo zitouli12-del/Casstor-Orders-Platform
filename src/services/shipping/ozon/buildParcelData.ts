@@ -8,7 +8,7 @@ export function buildParcelData(
   const nature = [
     order.color,
     order.size,
-    order.address,
+    order.product,
   ]
     .filter(Boolean)
     .join(" - ");

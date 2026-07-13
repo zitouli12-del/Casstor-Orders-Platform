@@ -6,7 +6,9 @@ import { Geist } from "next/font/google";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/app/lib/utils";
+
 import DashboardLayout from "@/src/components/layout/DashboardLayout";
+import { Toaster } from "@/src/components/ui/sonner";
 
 const geist = Geist({
   subsets: ["latin"],
@@ -33,6 +35,8 @@ export default function RootLayout({
         ) : (
           <DashboardLayout>{children}</DashboardLayout>
         )}
+
+        <Toaster richColors position="top-right" />
       </body>
     </html>
   );

@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
 import {
   CheckSquare,
-  History,
-  Truck,
-  Settings,
   FileText,
+  History,
+  MapPinned,
+  Settings,
+  Truck,
 } from "lucide-react";
 
 const links = [
@@ -15,31 +17,31 @@ const links = [
     title: "Confirmation",
     href: "/confirmation",
     icon: CheckSquare,
-    color: "orange",
   },
   {
     title: "Historique",
     href: "/historique",
     icon: History,
-    color: "blue",
+  },
+  {
+    title: "Suivi des Expéditions",
+    href: "/suivi-expeditions",
+    icon: MapPinned,
   },
   {
     title: "Transporteurs",
     href: "/transporteurs",
     icon: Truck,
-    color: "emerald",
   },
   {
     title: "Bon de Livraison",
     href: "/bon-livraisons",
     icon: FileText,
-    color: "cyan",
   },
   {
     title: "Paramètres",
     href: "/parametres",
     icon: Settings,
-    color: "purple",
   },
 ];
 
@@ -47,28 +49,33 @@ export default function Navigation() {
   const pathname = usePathname();
 
   return (
-    <nav className="p-4 space-y-1.5 mt-4">
+    <nav className="mt-3 space-y-1.5 px-3 py-2 sm:px-4">
       {links.map((link) => {
         const Icon = link.icon;
 
         const active =
-          link.href === "/bon-livraisons"
-            ? pathname.startsWith("/bon-livraisons")
-            : pathname === link.href;
+          pathname === link.href ||
+          pathname.startsWith(`${link.href}/`);
 
         return (
           <Link
             key={link.href}
             href={link.href}
-            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all
-              ${
-                active
-                  ? "bg-orange-600/10 text-orange-500 border border-orange-500/20"
-                  : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-              }`}
+            className={`flex min-h-11 items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition-all duration-200 ${
+              active
+                ? "border border-orange-200 bg-orange-50 text-orange-600 shadow-sm"
+                : "border border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+            }`}
           >
-            <Icon size={18} />
-            {link.title}
+            <Icon
+              size={18}
+              strokeWidth={1.8}
+              className="shrink-0"
+            />
+
+            <span className="min-w-0 truncate">
+              {link.title}
+            </span>
           </Link>
         );
       })}
