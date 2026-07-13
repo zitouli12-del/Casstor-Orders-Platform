@@ -40,12 +40,14 @@ export default function TrackingDrawer({
       return;
     }
 
+    const shipmentId = currentShipment.id;
+
     async function loadHistory() {
       try {
         setLoadingHistory(true);
 
         const response = await fetch(
-          `/api/tracking-history?shippingId=${currentShipment.id}`
+          `/api/tracking-history?shippingId=${shipmentId}`
         );
 
         const result = await response.json();
@@ -60,6 +62,7 @@ export default function TrackingDrawer({
           "Erreur lors du chargement de l'historique :",
           error
         );
+
         setHistory([]);
       } finally {
         setLoadingHistory(false);
