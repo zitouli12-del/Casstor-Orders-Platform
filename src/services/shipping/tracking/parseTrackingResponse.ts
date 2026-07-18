@@ -5,13 +5,16 @@ export function parseTrackingResponse(
 ): TrackingResponse[] {
   const data = JSON.parse(rawResponse);
 
-  const trackingList = data["TRACKING-LIST"] ?? {};
+  const trackingList =
+    data["TRACKING-LIST"] ?? {};
 
   return Object.entries(trackingList).map(
-    ([trackingNumber, value]: [string, any]): TrackingResponse => ({
+    (
+      [trackingNumber, value]: [string, any]
+    ): TrackingResponse => ({
       trackingNumber,
       status: value.STATUT ?? "",
-      situation: value.STATUT ?? null,
+      situation: value.SITUATION ?? null,
       note: value.NOTE ?? null,
       date: value.TIME_STR ?? null,
     })

@@ -1,10 +1,17 @@
-import { Eye } from "lucide-react";
+import {
+  Eye,
+  RefreshCcw,
+  Trash2,
+} from "lucide-react";
+
 import TrackingStatusBadge from "./TrackingStatusBadge";
 
 interface TrackingTableProps {
   shipments: any[];
   loading: boolean;
   onView: (shipment: any) => void;
+  onExchange: (shipment: any) => void;
+  onDelete: (shipment: any) => void;
 }
 
 function formatDate(date: string) {
@@ -21,6 +28,8 @@ export default function TrackingTable({
   shipments,
   loading,
   onView,
+  onExchange,
+  onDelete,
 }: TrackingTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -34,7 +43,9 @@ export default function TrackingTable({
             <th className="px-6 py-4">Tracking</th>
             <th className="px-6 py-4">Statut</th>
             <th className="px-6 py-4">Dernière MAJ</th>
-            <th className="px-6 py-4 text-center">Actions</th>
+            <th className="px-6 py-4 text-center">
+              Actions
+            </th>
           </tr>
         </thead>
 
@@ -68,15 +79,15 @@ export default function TrackingTable({
                 </td>
 
                 <td className="px-6 py-4">
-                  {shipment.orders?.name}
+                  {shipment.customer_name}
                 </td>
 
                 <td className="px-6 py-4">
-                  {shipment.orders?.phone}
+                  {shipment.customer_phone}
                 </td>
 
                 <td className="px-6 py-4">
-                  {shipment.orders?.city}
+                  {shipment.customer_city}
                 </td>
 
                 <td className="px-6 py-4 font-mono text-sm">
@@ -84,23 +95,56 @@ export default function TrackingTable({
                 </td>
 
                 <td className="px-6 py-4">
-                  <TrackingStatusBadge
-                    status={shipment.shipping_status}
-                  />
+                  <div className="flex flex-col gap-2">
+                    <TrackingStatusBadge
+                      status={shipment.shipping_status}
+                    />
+
+                    {shipment.shipment_type ===
+                      "exchange" && (
+                      <span className="inline-flex w-fit items-center rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700">
+                        🔄 Échange
+                      </span>
+                    )}
+                  </div>
                 </td>
 
                 <td className="px-6 py-4 text-sm text-gray-500">
                   {formatDate(shipment.updated_at)}
                 </td>
 
-                <td className="px-6 py-4 text-center">
-                  <button
-                    onClick={() => onView(shipment)}
-                    className="rounded-full p-2 text-slate-500 transition-all duration-200 hover:bg-orange-100 hover:text-orange-600"
-                    title="Voir les détails"
-                  >
-                    <Eye className="h-5 w-5" />
-                  </button>
+                <td className="px-6 py-4">
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() =>
+                        onView(shipment)
+                      }
+                      className="rounded-full p-2 text-slate-500 transition-all duration-200 hover:bg-orange-100 hover:text-orange-600"
+                      title="Voir les détails"
+                    >
+                      <Eye className="h-5 w-5" />
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        onExchange(shipment)
+                      }
+                      className="rounded-full p-2 text-slate-500 transition-all duration-200 hover:bg-amber-100 hover:text-amber-600"
+                      title="Créer un échange"
+                    >
+                      <RefreshCcw className="h-5 w-5" />
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        onDelete(shipment)
+                      }
+                      className="rounded-full p-2 text-slate-500 transition-all duration-200 hover:bg-red-100 hover:text-red-600"
+                      title="Supprimer l'expédition"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))

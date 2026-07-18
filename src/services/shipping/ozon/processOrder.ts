@@ -1,40 +1,41 @@
 import { Order } from "@/src/types/Order";
-import { resolveCity } from "./resolveCity";
-import { buildParcelData } from "./buildParcelData";
-import { sendParcel } from "./sendParcel";
-import { saveParcel } from "./saveParcel";
+import { ShippingParcelInput } from "@/src/types/ShippingParcelInput";
+
+import { createShipment } from "./createShipment";
 
 export async function processOrder(
   order: Order
 ) {
   try {
-    const cityId = await resolveCity(
-      order.city || ""
-    );
+    const parcel: ShippingParcelInput = {
+      orderId: order.id,
 
-    const payload = buildParcelData(
-      order,
-      cityId
-    );
+      storeId: order.store_id,
 
-    const response = await sendParcel(
-      payload,
-      order.store_id
-    );
+      shipmentType: "standard",
 
-    const trackingNumber =
-      response.trackingNumber;
+      parentShipmentId: null,
 
-await saveParcel(
-  order.id,
-  order.store_id,
-  trackingNumber
-);
+      receiver: order.name || "",
 
-    return {
-      success: true,
-      trackingNumber,
+      phone: order.phone || "",
+
+      city: order.city || "",
+
+      address: order.address || "",
+
+      product: order.product,
+
+      color: order.color,
+
+      size: order.size,
+
+      price: Number(order.price || 0),
+
+      note: order.livreur_comment,
     };
+
+    return await createShipment(parcel);
 
   } catch (error: unknown) {
 

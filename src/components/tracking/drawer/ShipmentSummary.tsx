@@ -14,8 +14,6 @@ interface ShipmentSummaryProps {
 export default function ShipmentSummary({
   shipment,
 }: ShipmentSummaryProps) {
-  const order = shipment.orders;
-
   const items = [
     {
       icon: CheckCircle2,
@@ -33,7 +31,10 @@ export default function ShipmentSummary({
     },
     {
       icon: CircleDollarSign,
-      value: order?.price ? `${order.price} DH` : "-",
+      value:
+        shipment.parcel_price != null
+          ? `${shipment.parcel_price} DH`
+          : "-",
       label: "Prix",
       iconClass: "text-amber-500",
       bgClass: "bg-amber-50",
@@ -41,8 +42,10 @@ export default function ShipmentSummary({
     {
       icon: Package,
       value:
-        order?.size || order?.color
-          ? `${order.size ?? "-"} • ${order.color ?? "-"}`
+        shipment.parcel_size || shipment.parcel_color
+          ? `${shipment.parcel_size ?? "-"} • ${
+              shipment.parcel_color ?? "-"
+            }`
           : "-",
       label: "Taille • Couleur",
       iconClass: "text-violet-600",
@@ -65,7 +68,6 @@ export default function ShipmentSummary({
                   : ""
               }`}
             >
-              {/* Icon + Value */}
               <div className="flex items-center gap-4">
                 <div
                   className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full ${item.bgClass}`}

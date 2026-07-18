@@ -4,14 +4,20 @@ import {
   Edit,
   History,
   Package,
+  ShieldAlert,
 } from "lucide-react";
 
 import { Order } from "@/src/types/Order";
 import { analyzeOrderPhoneHistory } from "@/src/services/orders/analyzeOrderPhoneHistory";
+import { analyzeClientShippingHistory } from "@/src/services/tracking/analyzeClientShippingHistory";
+import { BlacklistEntry } from "@/src/services/blacklist/getBlacklistEntryByPhone";
+import { findBlacklistEntryByPhone } from "@/src/services/blacklist/findBlacklistEntryByPhone";
 
 interface OrdersTableProps {
   filteredOrders: Order[];
   allOrders: Order[];
+  allShipments: any[];
+  blacklist: BlacklistEntry[];
   updatingStatus: number | null;
   handleStatusChange: (
     orderId: number,
@@ -21,16 +27,114 @@ interface OrdersTableProps {
   getStatusColor: (status: string) => string;
 }
 
-const statusColors: Record<string, string> = {
-  nouvelle: "bg-blue-500",
-  confirmé: "bg-emerald-500",
-  "ps-reponse": "bg-amber-500",
-  "hors-confirmation": "bg-slate-400",
-};
+const ORDER_STATUSES = [
+  {
+    value: "nouvelle",
+    label: "Nouvelle",
+  },
+  {
+    value: "confirmé",
+    label: "Confirmé",
+  },
+  {
+    value: "injoignable",
+    label: "Injoignable",
+  },
+  {
+    value: "a-rappeler",
+    label: "À rappeler",
+  },
+  {
+    value: "reporte",
+    label: "Reporté",
+  },
+  {
+    value: "annule",
+    label: "Annulé",
+  },
+  {
+    value: "doublon",
+    label: "Doublon",
+  },
+  {
+    value: "hors-confirmation",
+    label: "Hors confirmation",
+  },
+] as const;
+
+function getClientInsightText({
+  orderCount,
+  shippedCount,
+  deliveredCount,
+  refusedCount,
+  returnedCount,
+}: {
+  orderCount: number;
+  shippedCount: number;
+  deliveredCount: number;
+  refusedCount: number;
+  returnedCount: number;
+}) {
+  if (orderCount <= 1 && shippedCount === 0) {
+    return "Nouveau client · 1ère commande";
+  }
+
+  const parts: string[] = [
+    `${orderCount} commandes`,
+  ];
+
+  if (shippedCount === 0) {
+    parts.push("Aucun colis expédié");
+
+    return parts.join(" · ");
+  }
+
+  if (deliveredCount > 0) {
+    parts.push(
+      `${deliveredCount} ${
+        deliveredCount === 1 ? "livré" : "livrés"
+      }`
+    );
+  }
+
+  if (refusedCount > 0) {
+    parts.push(
+      `${refusedCount} ${
+        refusedCount === 1 ? "refusé" : "refusés"
+      }`
+    );
+  }
+
+  if (returnedCount > 0) {
+    parts.push(
+      `${returnedCount} ${
+        returnedCount === 1
+          ? "retourné"
+          : "retournés"
+      }`
+    );
+  }
+
+  if (
+    deliveredCount === 0 &&
+    refusedCount === 0 &&
+    returnedCount === 0
+  ) {
+    parts.push(
+      `${shippedCount} colis expédié${
+        shippedCount > 1 ? "s" : ""
+      }`
+    );
+  }
+
+  return parts.join(" · ");
+}
 
 export default function OrdersTable({
   filteredOrders,
   allOrders,
+  allShipments,
+  blacklist,
   updatingStatus,
   handleStatusChange,
   openModal,
@@ -38,7 +142,7 @@ export default function OrdersTable({
 }: OrdersTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="max-h-[650px] overflow-x-auto overflow-y-auto">
+      <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 z-20">
             <tr className="border-b border-slate-200 bg-slate-50/80 backdrop-blur-sm">
@@ -124,6 +228,32 @@ export default function OrdersTable({
                     allOrders
                   );
 
+                const shippingHistory =
+                  analyzeClientShippingHistory(
+                    order.phone,
+                    allShipments
+                  );
+
+                const blacklistEntry =
+                  findBlacklistEntryByPhone(
+                    order.phone,
+                    blacklist
+                  );
+
+                const clientInsightText =
+                  getClientInsightText({
+                    orderCount:
+                      phoneHistory.orderCount,
+                    shippedCount:
+                      shippingHistory.shippedCount,
+                    deliveredCount:
+                      shippingHistory.deliveredCount,
+                    refusedCount:
+                      shippingHistory.refusedCount,
+                    returnedCount:
+                      shippingHistory.returnedCount,
+                  });
+
                 return (
                   <tr
                     key={order.id}
@@ -152,23 +282,61 @@ export default function OrdersTable({
 
                     <td className="whitespace-nowrap px-6 py-5">
                       <div className="flex flex-col items-start gap-1.5">
-                        <span className="text-[19px] font-semibold tracking-wide text-slate-800">
-                          {order.phone}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[19px] font-semibold tracking-wide text-slate-800">
+                            {order.phone}
+                          </span>
+
+                          {blacklistEntry && (
+                            <span
+                              title={`Client blacklisté — ${blacklistEntry.reason}`}
+                              className="inline-flex shrink-0 items-center justify-center text-red-600"
+                              aria-label={`Client blacklisté — ${blacklistEntry.reason}`}
+                            >
+                              <ShieldAlert
+                                size={17}
+                                strokeWidth={2.5}
+                              />
+                            </span>
+                          )}
+
+                          {phoneHistory.isPossibleDuplicate && (
+                            <span
+                              title="Doublon possible"
+                              className="inline-flex shrink-0 items-center justify-center text-amber-500"
+                              aria-label="Doublon possible"
+                            >
+                              <AlertTriangle
+                                size={16}
+                                strokeWidth={2.5}
+                              />
+                            </span>
+                          )}
+                        </div>
+
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                            blacklistEntry
+                              ? "border-red-200 bg-red-50 text-red-700"
+                              : "border-violet-200 bg-violet-50 text-violet-700"
+                          }`}
+                        >
+                          {blacklistEntry ? (
+                            <ShieldAlert
+                              size={12}
+                              className="shrink-0"
+                            />
+                          ) : (
+                            <History
+                              size={12}
+                              className="shrink-0"
+                            />
+                          )}
+
+                          {blacklistEntry
+                            ? `Client blacklisté · ${blacklistEntry.reason}`
+                            : clientInsightText}
                         </span>
-
-                        {phoneHistory.isPossibleDuplicate ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                            <AlertTriangle size={12} />
-
-                            Doublon possible
-                          </span>
-                        ) : phoneHistory.orderCount > 1 ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
-                            <History size={12} />
-
-                            {phoneHistory.orderCount} commandes
-                          </span>
-                        ) : null}
                       </div>
                     </td>
 
@@ -214,7 +382,7 @@ export default function OrdersTable({
                     </td>
 
                     <td className="whitespace-nowrap px-6 py-5">
-                      <div className="relative min-w-[130px]">
+                      <div className="relative min-w-[150px]">
                         <select
                           value={order.status}
                           onChange={(
@@ -237,25 +405,14 @@ export default function OrdersTable({
                           }`}
                           aria-label={`Statut de la commande #${order.id}`}
                         >
-                          {Object.entries(statusColors).map(
-                            ([status]) => (
+                          {ORDER_STATUSES.map(
+                            ({ value, label }) => (
                               <option
-                                key={status}
-                                value={status}
+                                key={value}
+                                value={value}
                                 className="bg-white text-slate-700"
                               >
-                                {status === "nouvelle" &&
-                                  "● Nouvelle"}
-
-                                {status === "confirmé" &&
-                                  "● Confirmé"}
-
-                                {status === "ps-reponse" &&
-                                  "● Ps-réponse"}
-
-                                {status ===
-                                  "hors-confirmation" &&
-                                  "● Hors-confirmation"}
+                                {label}
                               </option>
                             )
                           )}

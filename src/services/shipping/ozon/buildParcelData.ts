@@ -1,26 +1,30 @@
-import { Order } from "@/src/types/Order";
+import { ShippingParcelInput } from "@/src/types/ShippingParcelInput";
 import { OzonParcelPayload } from "@/src/types/ozon/OzonParcel";
 
 export function buildParcelData(
-  order: Order,
+  parcel: ShippingParcelInput,
   cityId: number
 ): OzonParcelPayload {
   const nature = [
-    order.color,
-    order.size,
-    order.product,
+    parcel.color,
+    parcel.size,
+    parcel.product,
   ]
     .filter(Boolean)
     .join(" - ");
 
   return {
-    "parcel-receiver": order.name || "",
-    "parcel-phone": order.phone || "",
+    "parcel-receiver": parcel.receiver,
+    "parcel-phone": parcel.phone,
     "parcel-city": cityId,
-    "parcel-address": order.address || "",
-    "parcel-note": order.livreur_comment || "",
-    "parcel-price": Number(order.price || 0),
+    "parcel-address": parcel.address,
+    "parcel-note": parcel.note || "",
+    "parcel-price": parcel.price,
     "parcel-nature": nature,
     "parcel-stock": 0,
+    "parcel-replace":
+      parcel.shipmentType === "exchange"
+        ? 1
+        : 0,
   };
 }

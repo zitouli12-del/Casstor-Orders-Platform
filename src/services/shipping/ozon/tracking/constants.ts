@@ -1,1 +1,1 @@
-export const TRACKING_BATCH_SIZE = 50;
+export const TRACKING_BATCH_SIZE = 100;

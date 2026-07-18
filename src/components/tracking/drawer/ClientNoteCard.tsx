@@ -26,9 +26,7 @@ export default function ClientNoteCard({
   async function handleSave() {
     try {
       setSaving(true);
-
       await onSave(note);
-
       setEditing(false);
     } finally {
       setSaving(false);
@@ -53,52 +51,44 @@ export default function ClientNoteCard({
     : null;
 
   return (
-    <div className="flex h-full flex-col rounded-3xl border border-gray-200 bg-white p-8">
-      <div className="mb-6 flex items-center gap-3">
+    <div className="rounded-3xl border border-gray-200 bg-white p-6">
+      <div className="mb-5 flex items-center gap-3">
         <FileText
-          size={20}
+          size={18}
           className="text-orange-500"
         />
 
-        <h3 className="text-lg font-semibold uppercase tracking-wider text-gray-700">
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-700">
           Note interne
         </h3>
       </div>
 
       {!editing ? (
         <>
-          <div className="flex-1 overflow-y-auto">
+          <div className="min-h-[90px]">
             {note ? (
-              <p className="whitespace-pre-wrap text-[15px] leading-7 text-gray-700">
+              <p className="whitespace-pre-wrap text-sm leading-6 text-gray-700">
                 {note}
               </p>
             ) : (
-              <p className="italic text-gray-400">
+              <p className="italic text-sm text-gray-400">
                 Aucune note interne.
               </p>
             )}
           </div>
 
-          <div className="mt-8 border-t border-gray-200 pt-5">
-            {updatedAt && (
-              <div className="mb-5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-                  Dernière modification
-                </p>
+          {updatedAt && (
+            <p className="mt-4 text-xs text-gray-400">
+              Dernière modification : {updatedAt}
+            </p>
+          )}
 
-                <p className="mt-1 text-sm text-gray-600">
-                  {updatedAt}
-                </p>
-              </div>
-            )}
-
-            <button
-              onClick={() => setEditing(true)}
-              className="w-full rounded-xl border border-gray-200 py-3 text-sm font-semibold transition hover:bg-gray-50"
-            >
-              {note ? "Modifier" : "Ajouter"}
-            </button>
-          </div>
+          <button
+            onClick={() => setEditing(true)}
+            className="mt-5 w-full rounded-xl border border-gray-200 py-2.5 text-sm font-medium transition hover:bg-gray-50"
+          >
+            {note ? "Modifier" : "Ajouter"}
+          </button>
         </>
       ) : (
         <>
@@ -107,15 +97,15 @@ export default function ClientNoteCard({
             onChange={(e) =>
               setNote(e.target.value)
             }
-            placeholder="Écrivez une note..."
-            className="h-[230px] w-full resize-none rounded-2xl border border-gray-200 p-4 text-sm leading-6 outline-none transition focus:border-orange-400"
+            placeholder="Écrire une note..."
+            className="h-32 w-full resize-none rounded-2xl border border-gray-200 p-4 text-sm outline-none focus:border-orange-400"
           />
 
-          <div className="mt-6 flex justify-end gap-3">
+          <div className="mt-4 flex justify-end gap-2">
             <button
               onClick={handleCancel}
               disabled={saving}
-              className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl border border-gray-200 px-4 py-2 text-sm transition hover:bg-gray-50"
             >
               Annuler
             </button>
@@ -123,12 +113,12 @@ export default function ClientNoteCard({
             <button
               onClick={handleSave}
               disabled={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600"
             >
               {saving ? (
                 <>
                   <LoaderCircle
-                    size={18}
+                    size={16}
                     className="animate-spin"
                   />
                   Enregistrement...

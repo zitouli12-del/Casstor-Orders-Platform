@@ -15,7 +15,11 @@ function Row({
   label,
   value,
 }: RowProps) {
-  if (value === null || value === undefined || value === "") {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
     return null;
   }
 
@@ -35,10 +39,6 @@ function Row({
 export default function OrderCard({
   shipment,
 }: OrderCardProps) {
-  const order = shipment.orders;
-
-  if (!order) return null;
-
   return (
     <div className="rounded-3xl border border-gray-200 bg-white p-8">
       <div className="mb-8 flex items-center gap-3">
@@ -52,41 +52,45 @@ export default function OrderCard({
         </h3>
       </div>
 
-      <h2 className="mb-8 text-3xl font-bold leading-tight text-gray-900">
-        {order.product}
-      </h2>
+<h2 className="mb-6 text-2xl font-bold leading-tight text-gray-900">
+  {shipment.parcel_product}
+</h2>
 
       <div>
         <Row
           label="Date de commande"
-          value={new Date(
-            order.created_at
-          ).toLocaleString("fr-FR")}
+          value={
+            shipment.orders
+              ? new Date(
+                  shipment.orders.created_at
+                ).toLocaleString("fr-FR")
+              : null
+          }
         />
 
         <Row
           label="Taille"
-          value={order.size}
+          value={shipment.parcel_size}
         />
 
         <Row
           label="Couleur"
-          value={order.color}
+          value={shipment.parcel_color}
         />
 
         <Row
           label="Prix"
           value={
-            order.price != null
-              ? `${order.price} DH`
+            shipment.parcel_price != null
+              ? `${shipment.parcel_price} DH`
               : null
           }
         />
 
-        {order.source && (
+        {shipment.orders?.source && (
           <Row
             label="Source"
-            value={order.source}
+            value={shipment.orders.source}
           />
         )}
       </div>

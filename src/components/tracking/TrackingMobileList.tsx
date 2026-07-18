@@ -11,6 +11,8 @@ interface TrackingMobileListProps {
   shipments: any[];
   loading: boolean;
   onView: (shipment: any) => void;
+  onExchange: (shipment: any) => void;
+  onDelete: (shipment: any) => void;
 }
 
 function formatDate(date?: string | null) {
@@ -68,7 +70,10 @@ export default function TrackingMobileList({
   shipments,
   loading,
   onView,
+  onExchange,
+  onDelete,
 }: TrackingMobileListProps) {
+  
   if (loading) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white px-5 py-14 shadow-sm">
@@ -168,7 +173,15 @@ export default function TrackingMobileList({
                   {order?.name || "Client sans nom"}
                 </h3>
 
-                <div className="mt-2 flex items-center gap-2">
+                <a
+                  href={
+                    order?.phone
+                      ? `tel:${order.phone.replace(/[^\d+]/g, "")}`
+                      : undefined
+                  }
+                  aria-label={`Appeler ${order?.phone}`}
+                  className="mt-2 flex items-center gap-2 rounded-md transition-colors hover:text-orange-600 active:scale-[0.98]"
+                >
                   <Phone
                     size={15}
                     className="shrink-0 text-slate-400"
@@ -177,7 +190,7 @@ export default function TrackingMobileList({
                   <span className="text-[15px] font-semibold tracking-wide text-slate-800">
                     {order?.phone || "-"}
                   </span>
-                </div>
+                </a>
 
                 <div className="mt-3 flex items-start gap-2">
                   <MapPin

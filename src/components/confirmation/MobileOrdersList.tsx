@@ -8,14 +8,20 @@ import {
   Palette,
   Phone,
   Ruler,
+  ShieldAlert,
 } from "lucide-react";
 
 import { Order } from "@/src/types/Order";
 import { analyzeOrderPhoneHistory } from "@/src/services/orders/analyzeOrderPhoneHistory";
+import { analyzeClientShippingHistory } from "@/src/services/tracking/analyzeClientShippingHistory";
+import { BlacklistEntry } from "@/src/services/blacklist/getBlacklistEntryByPhone";
+import { findBlacklistEntryByPhone } from "@/src/services/blacklist/findBlacklistEntryByPhone";
 
 interface MobileOrdersListProps {
   filteredOrders: Order[];
   allOrders: Order[];
+  allShipments: any[];
+  blacklist: BlacklistEntry[];
   updatingStatus: number | null;
   handleStatusChange: (
     orderId: number,
@@ -25,9 +31,79 @@ interface MobileOrdersListProps {
   getStatusColor: (status: string) => string;
 }
 
+function getClientInsightText({
+  orderCount,
+  shippedCount,
+  deliveredCount,
+  refusedCount,
+  returnedCount,
+}: {
+  orderCount: number;
+  shippedCount: number;
+  deliveredCount: number;
+  refusedCount: number;
+  returnedCount: number;
+}) {
+  if (orderCount <= 1 && shippedCount === 0) {
+    return "Nouveau client · 1ère commande";
+  }
+
+  const parts: string[] = [
+    `${orderCount} commandes`,
+  ];
+
+  if (shippedCount === 0) {
+    parts.push("Aucun colis expédié");
+
+    return parts.join(" · ");
+  }
+
+  if (deliveredCount > 0) {
+    parts.push(
+      `${deliveredCount} ${
+        deliveredCount === 1 ? "livré" : "livrés"
+      }`
+    );
+  }
+
+  if (refusedCount > 0) {
+    parts.push(
+      `${refusedCount} ${
+        refusedCount === 1 ? "refusé" : "refusés"
+      }`
+    );
+  }
+
+  if (returnedCount > 0) {
+    parts.push(
+      `${returnedCount} ${
+        returnedCount === 1
+          ? "retourné"
+          : "retournés"
+      }`
+    );
+  }
+
+  if (
+    deliveredCount === 0 &&
+    refusedCount === 0 &&
+    returnedCount === 0
+  ) {
+    parts.push(
+      `${shippedCount} colis expédié${
+        shippedCount > 1 ? "s" : ""
+      }`
+    );
+  }
+
+  return parts.join(" · ");
+}
+
 export default function MobileOrdersList({
   filteredOrders,
   allOrders,
+  allShipments,
+  blacklist,
   updatingStatus,
   handleStatusChange,
   openModal,
@@ -61,17 +137,53 @@ export default function MobileOrdersList({
   return (
     <div className="space-y-3">
       {filteredOrders.map((order) => {
-        const phoneHistory = analyzeOrderPhoneHistory(
-          order,
-          allOrders
-        );
+        const phoneHistory =
+          analyzeOrderPhoneHistory(
+            order,
+            allOrders
+          );
+
+        const shippingHistory =
+          analyzeClientShippingHistory(
+            order.phone,
+            allShipments
+          );
+
+        const blacklistEntry =
+          findBlacklistEntryByPhone(
+            order.phone,
+            blacklist
+          );
+
+        const clientInsightText =
+          getClientInsightText({
+            orderCount: phoneHistory.orderCount,
+            shippedCount:
+              shippingHistory.shippedCount,
+            deliveredCount:
+              shippingHistory.deliveredCount,
+            refusedCount:
+              shippingHistory.refusedCount,
+            returnedCount:
+              shippingHistory.returnedCount,
+          });
 
         return (
           <article
             key={order.id}
-            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            className={`overflow-hidden rounded-2xl bg-white shadow-sm ${
+              blacklistEntry
+                ? "border border-red-200"
+                : "border border-slate-200"
+            }`}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3.5">
+            <div
+              className={`flex items-start justify-between gap-3 border-b px-4 py-3.5 ${
+                blacklistEntry
+                  ? "border-red-100 bg-red-50/40"
+                  : "border-slate-100"
+              }`}
+            >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-slate-900">
@@ -151,23 +263,86 @@ export default function MobileOrdersList({
                   />
 
                   <div className="min-w-0">
-                    <p className="text-[15px] font-semibold tracking-wide text-slate-800">
-                      {order.phone || "-"}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[15px] font-semibold tracking-wide text-slate-800">
+                        {order.phone || "-"}
+                      </p>
 
-                    {phoneHistory.isPossibleDuplicate ? (
-                      <span className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                        <AlertTriangle size={12} />
-                        Doublon possible
+                      {blacklistEntry && (
+                        <span
+                          title={`Client blacklisté — ${blacklistEntry.reason}`}
+                          className="inline-flex shrink-0 items-center justify-center text-red-600"
+                          aria-label={`Client blacklisté — ${blacklistEntry.reason}`}
+                        >
+                          <ShieldAlert
+                            size={16}
+                            strokeWidth={2.5}
+                          />
+                        </span>
+                      )}
+
+                      {phoneHistory.isPossibleDuplicate && (
+                        <span
+                          title="Doublon possible"
+                          className="inline-flex shrink-0 items-center justify-center text-amber-500"
+                          aria-label="Doublon possible"
+                        >
+                          <AlertTriangle
+                            size={15}
+                            strokeWidth={2.5}
+                          />
+                        </span>
+                      )}
+                    </div>
+
+                    <span
+                      className={`mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                        blacklistEntry
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : "border-violet-200 bg-violet-50 text-violet-700"
+                      }`}
+                    >
+                      {blacklistEntry ? (
+                        <ShieldAlert
+                          size={12}
+                          className="shrink-0"
+                        />
+                      ) : (
+                        <History
+                          size={12}
+                          className="shrink-0"
+                        />
+                      )}
+
+                      <span className="truncate">
+                        {blacklistEntry
+                          ? `Client blacklisté · ${blacklistEntry.reason}`
+                          : clientInsightText}
                       </span>
-                    ) : phoneHistory.orderCount > 1 ? (
-                      <span className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
-                        <History size={12} />
-                        {phoneHistory.orderCount} commandes
-                      </span>
-                    ) : null}
+                    </span>
                   </div>
                 </div>
+
+                {blacklistEntry?.notes && (
+                  <div className="mt-3 rounded-xl border border-red-100 bg-red-50/70 px-3 py-2.5">
+                    <div className="flex items-start gap-2">
+                      <ShieldAlert
+                        size={14}
+                        className="mt-0.5 shrink-0 text-red-500"
+                      />
+
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-red-600">
+                          Note blacklist
+                        </p>
+
+                        <p className="mt-1 break-words text-xs leading-5 text-red-700">
+                          {blacklistEntry.notes}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-3 flex items-start gap-2">
                   <MapPin
@@ -228,6 +403,7 @@ export default function MobileOrdersList({
                 aria-label={`Modifier la commande #${order.id}`}
               >
                 <Edit size={17} />
+
                 Modifier la commande
               </button>
             </div>
