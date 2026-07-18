@@ -232,21 +232,37 @@ export default function MobileOrdersList({
                 }`}
                 aria-label={`Statut de la commande #${order.id}`}
               >
-                <option value="nouvelle">
-                  Nouvelle
-                </option>
+<option value="nouvelle">
+  Nouvelle
+</option>
 
-                <option value="confirmé">
-                  Confirmé
-                </option>
+<option value="confirmé">
+  Confirmé
+</option>
 
-                <option value="ps-reponse">
-                  Ps-réponse
-                </option>
+<option value="injoignable">
+  Injoignable
+</option>
 
-                <option value="hors-confirmation">
-                  Hors-confirmation
-                </option>
+<option value="a-rappeler">
+  À rappeler
+</option>
+
+<option value="reporte">
+  Reporté
+</option>
+
+<option value="annule">
+  Annulé
+</option>
+
+<option value="doublon">
+  Doublon
+</option>
+
+<option value="hors-confirmation">
+  Hors confirmation
+</option>
               </select>
             </div>
 
@@ -264,9 +280,12 @@ export default function MobileOrdersList({
 
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <p className="text-[15px] font-semibold tracking-wide text-slate-800">
-                        {order.phone || "-"}
-                      </p>
+<a
+  href={`tel:${order.phone}`}
+  className="text-[15px] font-semibold tracking-wide text-slate-800"
+>
+  {order.phone}
+</a>
 
                       {blacklistEntry && (
                         <span

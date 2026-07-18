@@ -37,12 +37,13 @@ export default function DrawerHeader({
       minute: "2-digit",
     }).format(new Date(date));
   }
-
+console.log("shipment =", shipment);
+console.log("tracking_number =", shipment.tracking_number);
   return (
     <div className="border-b border-gray-200 bg-white px-8 py-6">
       <div className="flex items-start justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
             Détails de l'expédition
           </h1>
 
@@ -68,11 +69,11 @@ export default function DrawerHeader({
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-2">
-            <span className="font-mono text-sm font-semibold">
-              {shipment.tracking_number ?? "-"}
-            </span>
-          </div>
+<div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 w-full md:w-auto md:min-w-[260px]">
+  <span className="block truncate font-mono text-sm font-semibold">
+    {shipment.tracking_number ?? "-"}
+  </span>
+</div>
 
           <button
             onClick={copyTracking}
