@@ -5,7 +5,7 @@ import { User } from "lucide-react";
 import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
 
-import { ExchangeFormData } from "./ExchangeDrawer";
+import { ExchangeFormData } from "@/src/types/ExchangeForm";
 
 interface ClientCardProps {
   form: ExchangeFormData;
