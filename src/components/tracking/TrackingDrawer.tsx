@@ -4,6 +4,7 @@ import { supabase } from "@/src/lib/supabase";
 
 import { Shipment } from "@/src/types/Shipment";
 import { ShippingHistory } from "@/src/types/ShippingHistory";
+import type { ClientChange } from "@/src/types/ClientChange.ts";
 import { addClientToBlacklist } from "@/src/services/blacklist/addClientToBlacklist";
 import {
   BlacklistEntry,
@@ -36,6 +37,8 @@ export default function TrackingDrawer({
   const [savingBlacklist, setSavingBlacklist] = useState(false);
   const [blacklistEntry, setBlacklistEntry] = useState<BlacklistEntry | null>(null);
   const [checkingBlacklist, setCheckingBlacklist] = useState(false);
+  const [lastClientChange, setLastClientChange] =
+    useState<ClientChange | null>(null);
 
   useEffect(() => { setCurrentShipment(shipment); }, [shipment]);
   useEffect(() => {
@@ -48,7 +51,7 @@ export default function TrackingDrawer({
   }, [open]);
 
   useEffect(() => {
-    const phone = currentShipment?.orders?.phone;
+    const phone = currentShipment?.customer_phone;
     if (!phone) { setBlacklistEntry(null); setCheckingBlacklist(false); return; }
     let cancelled = false;
     async function checkBlacklist() {
@@ -67,7 +70,7 @@ export default function TrackingDrawer({
     }
     checkBlacklist();
     return () => { cancelled = true; };
-  }, [currentShipment?.orders?.phone]);
+  }, [currentShipment?.customer_phone]);
 
   useEffect(() => {
     if (!currentShipment) { setHistory([]); return; }
@@ -88,6 +91,43 @@ export default function TrackingDrawer({
     loadHistory();
   }, [currentShipment]);
 
+  useEffect(() => {
+    if (!currentShipment) {
+      setLastClientChange(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadLastClientChange() {
+      const { data, error } = await supabase
+        .from("shipment_client_changes")
+        .select("*")
+        .eq("shipment_id", currentShipment!.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("LOAD CLIENT CHANGE FAILED =", error);
+        setLastClientChange(null);
+        return;
+      }
+
+      setLastClientChange(data);
+console.log("CURRENT SHIPMENT ID =", currentShipment!.id);
+console.log("LAST CLIENT CHANGE =", data);
+    }
+
+    loadLastClientChange();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentShipment]);
+
   async function handleSaveNote(note: string) {
     if (!currentShipment) return;
     const now = new Date().toISOString();
@@ -98,26 +138,55 @@ export default function TrackingDrawer({
   }
 
   function handleOpenBlacklistModal() {
-    const order = currentShipment?.orders;
-    if (!order?.phone) { toast.error("Le numéro de téléphone du client est introuvable."); return; }
+    const phone = currentShipment?.customer_phone;
+    if (!phone) { toast.error("Le numéro de téléphone du client est introuvable."); return; }
     if (blacklistEntry) { toast.info("Ce client est déjà dans votre blacklist."); return; }
     setBlacklistModalOpen(true);
   }
 
   function handleCloseBlacklistModal() { if (savingBlacklist) return; setBlacklistModalOpen(false); }
 
-  async function handleAddToBlacklist({ reason, notes }: { reason: string; notes: string }) {
-    const order = currentShipment?.orders;
-    if (!order?.phone) { toast.error("Le numéro de téléphone du client est introuvable."); return; }
+  async function handleAddToBlacklist({
+    reason,
+    notes,
+  }: {
+    reason: string;
+    notes: string;
+  }) {
+    const phone = currentShipment?.customer_phone;
+    const clientName = currentShipment?.customer_name;
+
+    if (!phone) {
+      toast.error("Le numéro de téléphone du client est introuvable.");
+      return;
+    }
+
     try {
       setSavingBlacklist(true);
-      const newBlacklistEntry = await addClientToBlacklist({ phone: order.phone, clientName: order.name, reason, notes });
+
+      const newBlacklistEntry = await addClientToBlacklist({
+        phone,
+        clientName: clientName ?? "",
+        reason,
+        notes,
+      });
+
       setBlacklistEntry(newBlacklistEntry as BlacklistEntry);
       setBlacklistModalOpen(false);
-      toast.success("Client ajouté à la blacklist.", { description: "Ce client sera signalé lors de ses prochaines commandes." });
+
+      toast.success("Client ajouté à la blacklist.", {
+        description:
+          "Ce client sera signalé lors de ses prochaines commandes.",
+      });
     } catch (error) {
       console.error("ADD CLIENT TO BLACKLIST FAILED =", error);
-      toast.error("Impossible d'ajouter le client à la blacklist.", { description: error instanceof Error ? error.message : "Une erreur inconnue est survenue." });
+
+      toast.error("Impossible d'ajouter le client à la blacklist.", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "Une erreur inconnue est survenue.",
+      });
     } finally {
       setSavingBlacklist(false);
     }
@@ -140,6 +209,7 @@ export default function TrackingDrawer({
               <div className="flex flex-col gap-7">
                 <ClientCard
                   shipment={currentShipment}
+                  previousClient={lastClientChange}
                   blacklistEntry={blacklistEntry}
                   checkingBlacklist={checkingBlacklist}
                   onAddToBlacklist={handleOpenBlacklistModal}
@@ -165,8 +235,8 @@ export default function TrackingDrawer({
 
       <BlacklistModal
         open={blacklistModalOpen}
-        clientName={currentShipment.orders?.name}
-        phone={currentShipment.orders?.phone}
+        clientName={currentShipment.customer_name}
+        phone={currentShipment.customer_phone}
         saving={savingBlacklist}
         onClose={handleCloseBlacklistModal}
         onConfirm={handleAddToBlacklist}

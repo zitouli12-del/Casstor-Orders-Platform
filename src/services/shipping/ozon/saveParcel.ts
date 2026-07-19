@@ -17,8 +17,7 @@ export async function saveParcel(
 
       shipment_type: parcel.shipmentType,
 
-      parent_shipment_id:
-        parcel.parentShipmentId,
+      parent_shipment_id: parcel.parentShipmentId,
 
       customer_name: parcel.receiver,
 
@@ -42,6 +41,19 @@ export async function saveParcel(
   if (error) {
     throw new Error(
       `Erreur sauvegarde colis: ${error.message}`
+    );
+  }
+
+  const { error: orderError } = await supabase
+    .from("orders")
+    .update({
+      shipping_stage: "sent",
+    })
+    .eq("id", parcel.orderId);
+
+  if (orderError) {
+    throw new Error(
+      `Erreur mise à jour de la commande : ${orderError.message}`
     );
   }
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  AlertTriangle,
   Ban,
   Copy,
   Loader2,
@@ -42,17 +41,6 @@ const STATUS_CONFIG = {
       "bg-orange-600 hover:bg-orange-700 focus:ring-orange-500/20",
   },
 
-  "hors-confirmation": {
-    title: "Retirer de la confirmation ?",
-    description:
-      "Cette commande ne sera plus affichée sur la page Confirmation. Elle restera enregistrée dans la base de données avec le statut Hors confirmation.",
-    confirmLabel: "Oui, retirer",
-    icon: AlertTriangle,
-    iconClassName: "text-slate-600",
-    iconContainerClassName: "bg-slate-100",
-    buttonClassName:
-      "bg-slate-700 hover:bg-slate-800 focus:ring-slate-500/20",
-  },
 } as const;
 
 export default function ConfirmStatusChangeModal({

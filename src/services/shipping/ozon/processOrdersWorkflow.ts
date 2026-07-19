@@ -26,17 +26,13 @@ export async function processOrdersWorkflow(
   const results = [];
 
   for (const order of orders) {
-
-    const result =
-      await processOrder(order);
+    const result = await processOrder(order);
 
     if (result.success) {
       await supabase
         .from("orders")
         .update({
-          status: "hors-confirmation",
-          updated_at:
-            new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
         .eq("id", order.id);
     }
@@ -50,14 +46,8 @@ export async function processOrdersWorkflow(
   return {
     success: true,
     total: orders.length,
-    successCount:
-      results.filter(
-        (r) => r.success
-      ).length,
-    errorCount:
-      results.filter(
-        (r) => !r.success
-      ).length,
+    successCount: results.filter((r) => r.success).length,
+    errorCount: results.filter((r) => !r.success).length,
     results,
   };
 }

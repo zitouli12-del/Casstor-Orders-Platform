@@ -1,7 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  AlertCircle,
+  ArrowDown,
+  Home,
+  MapPin,
+  Phone,
+  TriangleAlert,
+  User,
+} from "lucide-react";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/src/components/ui/alert-dialog";
 
 import { supabase } from "@/src/lib/supabase";
 
@@ -10,6 +30,10 @@ import { BlacklistEntry } from "@/src/services/blacklist/getBlacklistEntryByPhon
 import { getShipments } from "@/src/services/tracking/getShipments";
 import { fetchOrders } from "@/src/services/orders/fetchOrders";
 import { updateOrder } from "@/src/services/orders/updateOrder";
+import { findCompatibleShipments } from "@/src/services/change-client/findCompatibleShipments";
+import { changeClient } from "@/src/services/change-client/changeClient";
+import { OrderWithCompatibleShipments } from "@/src/types/OrderWithCompatibleShipments";
+import { ChangeClientDrawer } from "@/src/components/change-client";
 
 import MobileOrdersList from "@/src/components/confirmation/MobileOrdersList";
 import OrdersTable from "@/src/components/confirmation/OrdersTable";
@@ -25,13 +49,11 @@ const ORDERS_PER_PAGE = 10;
 const HIDDEN_CONFIRMATION_STATUSES = [
   "annule",
   "doublon",
-  "hors-confirmation",
 ];
 
 const CONFIRMATION_REQUIRED_STATUSES = [
   "annule",
   "doublon",
-  "hors-confirmation",
 ];
 
 export default function ConfirmationPage() {
@@ -93,6 +115,19 @@ export default function ConfirmationPage() {
       type: "success";
     } | null>(null);
 
+  const [
+    selectedOrderForChangeClient,
+    setSelectedOrderForChangeClient,
+  ] =
+    useState<OrderWithCompatibleShipments | null>(
+      null
+    );
+  const [confirmChangeClientOpen, setConfirmChangeClientOpen] =
+    useState(false);
+
+  const [selectedShipmentForChange, setSelectedShipmentForChange] =
+    useState<any>(null);
+
   useEffect(() => {
     loadOrders();
   }, []);
@@ -128,12 +163,21 @@ export default function ConfirmationPage() {
     }
   }
 
+  const openChangeClientDrawer = (
+    order: OrderWithCompatibleShipments
+  ) => {
+    setSelectedOrderForChangeClient(order);
+  };
+  const closeChangeClientDrawer = () => {
+    setSelectedOrderForChangeClient(null);
+  };
+
   const filteredOrders = orders.filter((order) => {
     if (
-      HIDDEN_CONFIRMATION_STATUSES.includes(
-        order.status
-      )
+      HIDDEN_CONFIRMATION_STATUSES.includes(order.status)
     ) {
+      return false;
+    }if (order.shipping_stage === "sent") {
       return false;
     }
 
@@ -160,20 +204,30 @@ export default function ConfirmationPage() {
     return matchesSearch;
   });
 
+  const ordersWithCompatibleShipments =
+    filteredOrders.map((order) => ({
+      ...order,
+      compatibleShipments: findCompatibleShipments(
+        order,
+        shipments
+      ),
+    }));
+
   const totalPages = Math.max(
     1,
     Math.ceil(
-      filteredOrders.length / ORDERS_PER_PAGE
+      ordersWithCompatibleShipments.length / ORDERS_PER_PAGE
     )
   );
 
   const startIndex =
     (currentPage - 1) * ORDERS_PER_PAGE;
 
-  const paginatedOrders = filteredOrders.slice(
-    startIndex,
-    startIndex + ORDERS_PER_PAGE
-  );
+  const paginatedOrders =
+    ordersWithCompatibleShipments.slice(
+      startIndex,
+      startIndex + ORDERS_PER_PAGE
+    );
 
   useEffect(() => {
     setCurrentPage(1);
@@ -430,9 +484,6 @@ export default function ConfirmationPage() {
 
       doublon:
         "border-orange-500/30 focus:border-orange-500 bg-orange-500/10 text-orange-600",
-
-      "hors-confirmation":
-        "border-gray-500/30 focus:border-gray-500 bg-gray-500/10 text-gray-500",
     };
 
     return (
@@ -485,7 +536,9 @@ export default function ConfirmationPage() {
   };
 
   const confirmedOrders = orders.filter(
-    (order) => order.status === "confirmé"
+    (order) =>
+      order.status === "confirmé" &&
+      order.shipping_stage === "pending"
   );
 
   const toggleAllOrders = () => {
@@ -566,6 +619,41 @@ export default function ConfirmationPage() {
     }
   };
 
+  async function handleConfirmChangeClient() {
+    if (
+      !selectedShipmentForChange ||
+      !selectedOrderForChangeClient
+    ) {
+      return;
+    }
+
+    try {
+      await changeClient({
+        shipmentId: selectedShipmentForChange.id,
+        newOrderId: selectedOrderForChangeClient.id,
+      });
+
+      setConfirmChangeClientOpen(false);
+      setSelectedShipmentForChange(null);
+
+      closeChangeClientDrawer();
+
+      await loadOrders();
+
+      setToast({
+        message: "Change Client effectué avec succès.",
+        type: "success",
+      });
+    } catch (error) {
+      console.error(error);
+
+      setToast({
+        message: "Erreur lors du Change Client.",
+        type: "error",
+      });
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -639,9 +727,12 @@ export default function ConfirmationPage() {
             handleStatusChange={handleStatusChange}
             openModal={openModal}
             getStatusColor={getStatusColor}
+            openChangeClientDrawer={
+              openChangeClientDrawer
+            }
           />
 
-          {filteredOrders.length >
+          {ordersWithCompatibleShipments.length >
             ORDERS_PER_PAGE && (
             <div className="mt-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-3 shadow-sm">
               <p className="text-sm font-medium text-slate-500">
@@ -653,12 +744,12 @@ export default function ConfirmationPage() {
                 <span className="font-semibold text-slate-800">
                   {Math.min(
                     startIndex + ORDERS_PER_PAGE,
-                    filteredOrders.length
+                    ordersWithCompatibleShipments.length
                   )}
                 </span>
                 {" sur "}
                 <span className="font-semibold text-slate-800">
-                  {filteredOrders.length}
+                  {ordersWithCompatibleShipments.length}
                 </span>
                 {" commandes"}
               </p>
@@ -721,7 +812,7 @@ export default function ConfirmationPage() {
 
         <div className="md:hidden">
           <MobileOrdersList
-            filteredOrders={filteredOrders}
+            filteredOrders={ordersWithCompatibleShipments}
             allOrders={orders}
             allShipments={shipments}
             blacklist={blacklist}
@@ -775,6 +866,125 @@ export default function ConfirmationPage() {
         onClose={handleCloseStatusConfirmation}
         onConfirm={handleConfirmStatusChange}
       />
+
+      <ChangeClientDrawer
+        open={
+          selectedOrderForChangeClient !== null
+        }
+        shipments={
+          selectedOrderForChangeClient
+            ?.compatibleShipments ?? []
+        }
+        onClose={closeChangeClientDrawer}
+        onSelect={(shipment) => {
+          setSelectedShipmentForChange(shipment);
+          setConfirmChangeClientOpen(true);
+        }}
+      />
+      <AlertDialog
+        open={confirmChangeClientOpen}
+        onOpenChange={setConfirmChangeClientOpen}
+      >
+        <AlertDialogContent className="sm:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Changer le client du colis
+            </AlertDialogTitle>
+
+            <AlertDialogDescription>
+              Vérifiez les informations avant de confirmer
+              le remplacement du client.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-4">
+            {/* Ancien client */}
+            <div className="rounded-lg border bg-slate-50 p-4">
+              <p className="mb-3 text-sm font-semibold text-slate-500">
+                Ancien client
+              </p>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-slate-500" />
+                  <span>{selectedShipmentForChange?.customer_name}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-slate-500" />
+                  <span>{selectedShipmentForChange?.customer_phone}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-slate-500" />
+                  <span>{selectedShipmentForChange?.customer_city}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Home className="h-4 w-4 text-slate-500" />
+                  <span>{selectedShipmentForChange?.customer_address}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-center">
+              <ArrowDown className="h-5 w-5 text-slate-400" />
+            </div>
+
+            {/* Nouveau client */}
+            <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+              <p className="mb-3 text-sm font-semibold text-orange-600">
+                Nouveau client
+              </p>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-orange-500" />
+                  <span>{selectedOrderForChangeClient?.name}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-orange-500" />
+                  <span>{selectedOrderForChangeClient?.phone}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-orange-500" />
+                  <span>{selectedOrderForChangeClient?.city}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Home className="h-4 w-4 text-orange-500" />
+                  <span>{selectedOrderForChangeClient?.address}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+              <TriangleAlert className="mt-0.5 h-5 w-5 text-amber-600" />
+
+              <p className="text-sm text-amber-700">
+                Cette opération est irréversible.
+                <br />
+                Les informations de l'ancien client resteront
+                disponibles dans l'historique.
+              </p>
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              Annuler
+            </AlertDialogCancel>
+
+            <AlertDialogAction
+              onClick={handleConfirmChangeClient}
+            >
+              Remplacer le client
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -8,9 +8,11 @@ import {
 
 import { Shipment } from "@/src/types/Shipment";
 import { BlacklistEntry } from "@/src/services/blacklist/getBlacklistEntryByPhone";
+import type { ClientChange } from "@/src/types/ClientChange.ts";
 
 interface ClientCardProps {
   shipment: Shipment;
+  previousClient: ClientChange | null;
   blacklistEntry: BlacklistEntry | null;
   checkingBlacklist: boolean;
   onAddToBlacklist: () => void;
@@ -45,6 +47,7 @@ function Row({
 
 export default function ClientCard({
   shipment,
+  previousClient,
   blacklistEntry,
   checkingBlacklist,
 }: ClientCardProps) {
@@ -65,30 +68,60 @@ export default function ClientCard({
         </h3>
       </div>
 
-      <h2 className="mb-5 text-[34px] font-bold text-gray-900">
-        {order.name || "-"}
-      </h2>
+<h2 className="mb-5 text-[34px] font-bold text-gray-900">
+  {shipment.customer_name || "-"}
+</h2>
+<div>
+  <Row
+    icon={<Phone size={18} />}
+    label="Téléphone"
+    value={shipment.customer_phone}
+    isPhone={true}
+  />
 
-      <div>
-        <Row
-          icon={<Phone size={18} />}
-          label="Téléphone"
-          value={order.phone}
-          isPhone={true}
-        />
+  <Row
+    icon={<MapPin size={18} />}
+    label="Ville"
+    value={shipment.customer_city}
+  />
 
-        <Row
-          icon={<MapPin size={18} />}
-          label="Ville"
-          value={order.city}
-        />
+  <Row
+    icon={<Home size={18} />}
+    label="Adresse"
+    value={shipment.customer_address}
+  />
 
-        <Row
-          icon={<Home size={18} />}
-          label="Adresse"
-          value={order.address}
-        />
+  {previousClient && (
+    <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <User size={16} className="text-amber-700" />
+
+        <h4 className="text-sm font-bold uppercase tracking-wide text-amber-800">
+          Client précédent
+        </h4>
       </div>
+
+      <Row
+        icon={<Phone size={18} />}
+        label="Téléphone"
+        value={previousClient.old_customer_phone}
+        isPhone
+      />
+
+      <Row
+        icon={<MapPin size={18} />}
+        label="Ville"
+        value={previousClient.old_customer_city}
+      />
+
+      <Row
+        icon={<Home size={18} />}
+        label="Adresse"
+        value={previousClient.old_customer_address}
+      />
+    </div>
+  )}
+</div>
 
       <div className="mt-auto border-t border-gray-100 pt-5">
         {checkingBlacklist ? (

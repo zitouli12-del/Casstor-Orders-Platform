@@ -11,6 +11,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 
+import { OrderWithCompatibleShipments } from "@/src/types/OrderWithCompatibleShipments";
 import { Order } from "@/src/types/Order";
 import { analyzeOrderPhoneHistory } from "@/src/services/orders/analyzeOrderPhoneHistory";
 import { analyzeClientShippingHistory } from "@/src/services/tracking/analyzeClientShippingHistory";
@@ -18,7 +19,7 @@ import { BlacklistEntry } from "@/src/services/blacklist/getBlacklistEntryByPhon
 import { findBlacklistEntryByPhone } from "@/src/services/blacklist/findBlacklistEntryByPhone";
 
 interface MobileOrdersListProps {
-  filteredOrders: Order[];
+  filteredOrders: OrderWithCompatibleShipments[];
   allOrders: Order[];
   allShipments: any[];
   blacklist: BlacklistEntry[];
@@ -258,10 +259,6 @@ export default function MobileOrdersList({
 
 <option value="doublon">
   Doublon
-</option>
-
-<option value="hors-confirmation">
-  Hors confirmation
 </option>
               </select>
             </div>

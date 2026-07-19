@@ -5,8 +5,10 @@ import {
   History,
   Package,
   ShieldAlert,
+  Users,
 } from "lucide-react";
 
+import { OrderWithCompatibleShipments } from "@/src/types/OrderWithCompatibleShipments";
 import { Order } from "@/src/types/Order";
 import { analyzeOrderPhoneHistory } from "@/src/services/orders/analyzeOrderPhoneHistory";
 import { analyzeClientShippingHistory } from "@/src/services/tracking/analyzeClientShippingHistory";
@@ -14,7 +16,7 @@ import { BlacklistEntry } from "@/src/services/blacklist/getBlacklistEntryByPhon
 import { findBlacklistEntryByPhone } from "@/src/services/blacklist/findBlacklistEntryByPhone";
 
 interface OrdersTableProps {
-  filteredOrders: Order[];
+  filteredOrders: OrderWithCompatibleShipments[];
   allOrders: Order[];
   allShipments: any[];
   blacklist: BlacklistEntry[];
@@ -25,6 +27,9 @@ interface OrdersTableProps {
   ) => void;
   openModal: (order: Order) => void;
   getStatusColor: (status: string) => string;
+  openChangeClientDrawer: (
+    order: OrderWithCompatibleShipments
+  ) => void;
 }
 
 const ORDER_STATUSES = [
@@ -55,10 +60,6 @@ const ORDER_STATUSES = [
   {
     value: "doublon",
     label: "Doublon",
-  },
-  {
-    value: "hors-confirmation",
-    label: "Hors confirmation",
   },
 ] as const;
 
@@ -139,6 +140,7 @@ export default function OrdersTable({
   handleStatusChange,
   openModal,
   getStatusColor,
+  openChangeClientDrawer,
 }: OrdersTableProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -156,10 +158,6 @@ export default function OrdersTable({
 
               <th className="whitespace-nowrap px-6 py-5 text-sm font-semibold uppercase tracking-wider text-slate-500">
                 Client
-              </th>
-
-              <th className="whitespace-nowrap px-6 py-5 text-sm font-semibold uppercase tracking-wider text-slate-500">
-                Téléphone
               </th>
 
               <th className="whitespace-nowrap px-6 py-5 text-sm font-semibold uppercase tracking-wider text-slate-500">
@@ -196,7 +194,7 @@ export default function OrdersTable({
             {filteredOrders.length === 0 ? (
               <tr>
                 <td
-                  colSpan={11}
+                  colSpan={10}
                   className="px-6 py-24 text-center"
                 >
                   <div className="flex flex-col items-center justify-center gap-4">
@@ -222,38 +220,6 @@ export default function OrdersTable({
               </tr>
             ) : (
               filteredOrders.map((order, index) => {
-                const phoneHistory =
-                  analyzeOrderPhoneHistory(
-                    order,
-                    allOrders
-                  );
-
-                const shippingHistory =
-                  analyzeClientShippingHistory(
-                    order.phone,
-                    allShipments
-                  );
-
-                const blacklistEntry =
-                  findBlacklistEntryByPhone(
-                    order.phone,
-                    blacklist
-                  );
-
-                const clientInsightText =
-                  getClientInsightText({
-                    orderCount:
-                      phoneHistory.orderCount,
-                    shippedCount:
-                      shippingHistory.shippedCount,
-                    deliveredCount:
-                      shippingHistory.deliveredCount,
-                    refusedCount:
-                      shippingHistory.refusedCount,
-                    returnedCount:
-                      shippingHistory.returnedCount,
-                  });
-
                 return (
                   <tr
                     key={order.id}
@@ -278,66 +244,6 @@ export default function OrdersTable({
 
                     <td className="whitespace-nowrap px-6 py-5 text-[19px] font-semibold text-slate-900">
                       {order.name}
-                    </td>
-
-                    <td className="whitespace-nowrap px-6 py-5">
-                      <div className="flex flex-col items-start gap-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[19px] font-semibold tracking-wide text-slate-800">
-                            {order.phone}
-                          </span>
-
-                          {blacklistEntry && (
-                            <span
-                              title={`Client blacklisté — ${blacklistEntry.reason}`}
-                              className="inline-flex shrink-0 items-center justify-center text-red-600"
-                              aria-label={`Client blacklisté — ${blacklistEntry.reason}`}
-                            >
-                              <ShieldAlert
-                                size={17}
-                                strokeWidth={2.5}
-                              />
-                            </span>
-                          )}
-
-                          {phoneHistory.isPossibleDuplicate && (
-                            <span
-                              title="Doublon possible"
-                              className="inline-flex shrink-0 items-center justify-center text-amber-500"
-                              aria-label="Doublon possible"
-                            >
-                              <AlertTriangle
-                                size={16}
-                                strokeWidth={2.5}
-                              />
-                            </span>
-                          )}
-                        </div>
-
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                            blacklistEntry
-                              ? "border-red-200 bg-red-50 text-red-700"
-                              : "border-violet-200 bg-violet-50 text-violet-700"
-                          }`}
-                        >
-                          {blacklistEntry ? (
-                            <ShieldAlert
-                              size={12}
-                              className="shrink-0"
-                            />
-                          ) : (
-                            <History
-                              size={12}
-                              className="shrink-0"
-                            />
-                          )}
-
-                          {blacklistEntry
-                            ? `Client blacklisté · ${blacklistEntry.reason}`
-                            : clientInsightText}
-                        </span>
-                      </div>
                     </td>
 
                     <td className="whitespace-nowrap px-6 py-5 text-[19px] font-medium text-slate-800">
@@ -425,16 +331,30 @@ export default function OrdersTable({
                       </div>
                     </td>
 
-                    <td className="whitespace-nowrap px-6 py-5 text-center">
-                      <button
-                        onClick={() => openModal(order)}
-                        className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-[15px] font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        aria-label={`Modifier la commande #${order.id}`}
-                      >
-                        <Edit size={18} />
+                    <td className="whitespace-nowrap px-6 py-5">
+                      <div className="flex items-center justify-center gap-1">
+                        {order.compatibleShipments.length > 0 && (
+                          <button
+                            onClick={() => openChangeClientDrawer(order)}
+                            className="relative flex h-9 w-9 items-center justify-center rounded-lg text-orange-600 transition hover:bg-orange-100"
+                            title="Changer le client"
+                          >
+                            <Users size={20} strokeWidth={2.2} />
 
-                        Modifier
-                      </button>
+                            <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[11px] font-bold text-white shadow-sm">
+                              {order.compatibleShipments.length}
+                            </span>
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => openModal(order)}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg text-blue-600 transition hover:bg-blue-100"
+                          title="Modifier la commande"
+                        >
+                          <Edit size={20} strokeWidth={2.2} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
