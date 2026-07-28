@@ -7,7 +7,6 @@ interface ShippingProvider {
   provider_name: string;
   client_id: string;
   api_key: string;
-  webhook_url: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;

@@ -23,7 +23,6 @@ interface ShippingProvider {
   provider_name: string;
   client_id: string;
   api_key: string;
-  webhook_url: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -35,26 +34,26 @@ const AVAILABLE_PROVIDERS = [
   {
     code: "ozon",
     name: "Ozon Express",
-    fields: ["client_id", "api_key", "webhook_url"],
+    fields: ["client_id", "api_key"],
     required: ["client_id", "api_key"]
   },
   {
     code: "olivraison",
     name: "Olivraison",
-    fields: ["api_key", "webhook_url"],
+    fields: ["api_key"],
     required: ["api_key"]
   }
 ];
 
 // Configuration des champs par transporteur
 const PROVIDER_FIELDS_CONFIG: Record<string, { fields: string[], label: string, required: string[] }> = {
-  ozon: {
-    fields: ["client_id", "api_key", "webhook_url"],
+ozon: {
+  fields: ["client_id", "api_key"],
     label: "Ozon Express",
     required: ["client_id", "api_key"]
   },
-  olivraison: {
-    fields: ["api_key", "webhook_url"],
+olivraison: {
+  fields: ["api_key"],
     label: "Olivraison",
     required: ["api_key"]
   }
@@ -63,7 +62,7 @@ const PROVIDER_FIELDS_CONFIG: Record<string, { fields: string[], label: string, 
 // Fonction pour obtenir les champs d'un transporteur
 function getProviderFields(providerCode: string): string[] {
   const config = PROVIDER_FIELDS_CONFIG[providerCode];
-  return config ? config.fields : ["client_id", "api_key", "webhook_url"];
+  return config ? config.fields : ["client_id", "api_key"];
 }
 
 // Fonction pour obtenir les champs requis d'un transporteur
@@ -248,11 +247,10 @@ async function fetchApiKey() {
     const missingFields = requiredFields.filter(field => !editedFields[field] || editedFields[field].trim() === "");
     
     if (missingFields.length > 0) {
-      const fieldLabels: { [key: string]: string } = {
-        client_id: "Client ID",
-        api_key: "API Key",
-        webhook_url: "Webhook URL"
-      };
+const fieldLabels: { [key: string]: string } = {
+  client_id: "Client ID",
+  api_key: "API Key"
+};
       setToast({ 
         message: `Veuillez remplir tous les champs requis: ${missingFields.map(f => fieldLabels[f] || f).join(", ")}`, 
         type: 'error' 
@@ -342,11 +340,10 @@ async function fetchApiKey() {
     const missingFields = requiredFields.filter(field => !newProviderFields[field] || newProviderFields[field].trim() === "");
     
     if (missingFields.length > 0) {
-      const fieldLabels: { [key: string]: string } = {
-        client_id: "Client ID",
-        api_key: "API Key",
-        webhook_url: "Webhook URL"
-      };
+const fieldLabels: { [key: string]: string } = {
+  client_id: "Client ID",
+  api_key: "API Key"
+};
       setToast({ 
         message: `Veuillez remplir tous les champs requis: ${missingFields.map(f => fieldLabels[f] || f).join(", ")}`, 
         type: 'error' 

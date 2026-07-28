@@ -8,8 +8,7 @@ import {
   RefreshCw,
   Truck,
   User,
-  Key,
-  Link
+  Key
 } from "lucide-react";
 
 interface AddProviderModalProps {
@@ -50,23 +49,25 @@ export default function AddProviderModal({
   if (!isOpen) return null;
 
   const renderModalField = (fieldName: string) => {
-    const fieldConfig: { [key: string]: { icon: any, label: string, placeholder: string, type?: string } } = {
+    const fieldConfig: {
+      [key: string]: {
+        icon: any;
+        label: string;
+        placeholder: string;
+        type?: string;
+      };
+    } = {
       client_id: {
         icon: User,
         label: "Client ID",
-        placeholder: "Entrez le Client ID"
+        placeholder: "Entrez le Client ID",
       },
       api_key: {
         icon: Key,
         label: "API Key",
         placeholder: "Entrez l'API Key",
-        type: "password"
+        type: "password",
       },
-      webhook_url: {
-        icon: Link,
-        label: "Webhook URL (optionnel)",
-        placeholder: "https://example.com/webhook (optionnel)"
-      }
     };
 
     const config = fieldConfig[fieldName];
