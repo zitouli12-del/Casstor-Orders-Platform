@@ -136,19 +136,15 @@ export default function ConfirmationPage() {
     setLoading(true);
 
     try {
-      const [
-        ordersData,
-        shipmentsData,
-        blacklistData,
-      ] = await Promise.all([
-        fetchOrders(),
-        getShipments(),
-        getBlacklist(),
-      ]);
+const ordersData = await fetchOrders();
+setOrders([...ordersData]);
 
-      setOrders(ordersData);
-      setShipments(shipmentsData);
-      setBlacklist(blacklistData);
+const shipmentsData = await getShipments();
+setShipments([...shipmentsData]);
+
+const blacklistData = await getBlacklist();
+setBlacklist([...blacklistData]);
+
     } catch (error) {
       console.error(
         "LOAD CONFIRMATION DATA FAILED =",

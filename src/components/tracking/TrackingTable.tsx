@@ -82,8 +82,15 @@ export default function TrackingTable({
                   {shipment.customer_name}
                 </td>
 
-                <td className="px-6 py-4">
-                  {shipment.customer_phone}
+                <td className="px-6 py-4 align-top">
+                  <div className="min-w-[180px]">
+                    <a
+                      href={`tel:${shipment.customer_phone}`}
+                      className="block text-[18px] font-bold tracking-wide text-slate-800 transition-colors hover:text-orange-600"
+                    >
+                      {shipment.customer_phone}
+                    </a>
+                  </div>
                 </td>
 
                 <td className="px-6 py-4">
@@ -100,10 +107,15 @@ export default function TrackingTable({
                       status={shipment.shipping_status}
                     />
 
-                    {shipment.shipment_type ===
-                      "exchange" && (
+                    {shipment.shipment_type === "exchange" && (
                       <span className="inline-flex w-fit items-center rounded-full bg-orange-100 px-2.5 py-1 text-xs font-medium text-orange-700">
                         🔄 Échange
+                      </span>
+                    )}
+
+                    {shipment.client_changed && (
+                      <span className="inline-flex w-fit items-center rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">
+                        👤 Nouveau client
                       </span>
                     )}
                   </div>
@@ -116,9 +128,7 @@ export default function TrackingTable({
                 <td className="px-6 py-4">
                   <div className="flex items-center justify-center gap-2">
                     <button
-                      onClick={() =>
-                        onView(shipment)
-                      }
+                      onClick={() => onView(shipment)}
                       className="rounded-full p-2 text-slate-500 transition-all duration-200 hover:bg-orange-100 hover:text-orange-600"
                       title="Voir les détails"
                     >
@@ -126,9 +136,7 @@ export default function TrackingTable({
                     </button>
 
                     <button
-                      onClick={() =>
-                        onExchange(shipment)
-                      }
+                      onClick={() => onExchange(shipment)}
                       className="rounded-full p-2 text-slate-500 transition-all duration-200 hover:bg-amber-100 hover:text-amber-600"
                       title="Créer un échange"
                     >
@@ -136,9 +144,7 @@ export default function TrackingTable({
                     </button>
 
                     <button
-                      onClick={() =>
-                        onDelete(shipment)
-                      }
+                      onClick={() => onDelete(shipment)}
                       className="rounded-full p-2 text-slate-500 transition-all duration-200 hover:bg-red-100 hover:text-red-600"
                       title="Supprimer l'expédition"
                     >

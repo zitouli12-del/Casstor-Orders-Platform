@@ -161,6 +161,10 @@ export default function OrdersTable({
               </th>
 
               <th className="whitespace-nowrap px-6 py-5 text-sm font-semibold uppercase tracking-wider text-slate-500">
+                Téléphone
+              </th>
+
+              <th className="whitespace-nowrap px-6 py-5 text-sm font-semibold uppercase tracking-wider text-slate-500">
                 Ville
               </th>
 
@@ -194,7 +198,7 @@ export default function OrdersTable({
             {filteredOrders.length === 0 ? (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={11}
                   className="px-6 py-24 text-center"
                 >
                   <div className="flex flex-col items-center justify-center gap-4">
@@ -220,6 +224,26 @@ export default function OrdersTable({
               </tr>
             ) : (
               filteredOrders.map((order, index) => {
+                const phoneHistory = analyzeOrderPhoneHistory(
+                  order,
+                  allOrders
+                );
+                const shippingHistory = analyzeClientShippingHistory(
+                  order.phone,
+                  allShipments
+                );
+                const blacklistEntry = findBlacklistEntryByPhone(
+                  order.phone,
+                  blacklist
+                );
+                const clientInsightText = getClientInsightText({
+                  orderCount: phoneHistory.orderCount,
+                  shippedCount: shippingHistory.shippedCount,
+                  deliveredCount: shippingHistory.deliveredCount,
+                  refusedCount: shippingHistory.refusedCount,
+                  returnedCount: shippingHistory.returnedCount,
+                });
+
                 return (
                   <tr
                     key={order.id}
@@ -242,8 +266,50 @@ export default function OrdersTable({
                       })}
                     </td>
 
-                    <td className="whitespace-nowrap px-6 py-5 text-[19px] font-semibold text-slate-900">
-                      {order.name}
+                    <td className="px-6 py-5 align-top">
+                      <div className="min-w-[180px]">
+                        <span className="text-[19px] font-semibold text-slate-900">
+                          {order.name}
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-5 align-top">
+                      <div className="min-w-[220px]">
+                        <a
+                          href={`tel:${order.phone}`}
+                          className="block text-[18px] font-bold tracking-wide text-slate-800 hover:text-orange-600 transition-colors"
+                        >
+                          {order.phone}
+                        </a>
+
+                        <div className="mt-2">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                              blacklistEntry
+                                ? "border-red-200 bg-red-50 text-red-700"
+                                : "border-violet-200 bg-violet-50 text-violet-700"
+                            }`}
+                          >
+                            {blacklistEntry ? (
+                              <ShieldAlert size={12} />
+                            ) : (
+                              <History size={12} />
+                            )}
+
+                            {blacklistEntry
+                              ? `Client blacklisté · ${blacklistEntry.reason}`
+                              : clientInsightText}
+
+                            {phoneHistory.isPossibleDuplicate && (
+                              <AlertTriangle
+                                size={12}
+                                className="ml-1"
+                              />
+                            )}
+                          </span>
+                        </div>
+                      </div>
                     </td>
 
                     <td className="whitespace-nowrap px-6 py-5 text-[19px] font-medium text-slate-800">

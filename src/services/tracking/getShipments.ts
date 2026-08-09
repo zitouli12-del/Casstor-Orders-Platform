@@ -63,10 +63,33 @@ export async function getShipments() {
   if (error) {
     throw error;
   }
-console.log(
-  "LAST SHIPMENT =",
-  data?.[0]
-);
 
-  return data ?? [];
+  // نجيب جميع الشحنات اللي تبدل ليها الزبون
+  const {
+    data: clientChanges,
+    error: clientChangesError,
+  } = await supabase
+    .from("shipment_client_changes")
+    .select("shipment_id");
+
+  if (clientChangesError) {
+    throw clientChangesError;
+  }
+
+  // نحولهم إلى Set باش يكون البحث سريع
+  const changedShipmentIds = new Set(
+    (clientChanges ?? []).map(
+      (item) => item.shipment_id
+    )
+  );
+
+  // نضيف client_changed لكل Shipment
+  const shipments = (data ?? []).map((shipment) => ({
+    ...shipment,
+    client_changed: changedShipmentIds.has(shipment.id),
+  }));
+
+  console.log("LAST SHIPMENT =", shipments[0]);
+
+  return shipments;
 }
