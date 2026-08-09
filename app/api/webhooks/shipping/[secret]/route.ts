@@ -47,11 +47,41 @@ export async function POST(
     console.log("Webhook body:", body);
     console.log("======================================");
 
-    // حاليا غير نستقبلو البيانات
-    // مازال ما غاديش نحدثو shipping هنا
+    // 3. تخزين الـWebhook الخام في قاعدة البيانات
+    const { data: webhookEvent, error: webhookError } = await supabase
+      .from("shipping_webhook_events")
+      .insert({
+        provider_id: provider.id,
+        store_id: provider.store_id,
+        order_id: body.orderId ?? null,
+        order_status: body.orderStatus ?? null,
+        situation: body.situation ?? null,
+        note: body.note ?? null,
+        payload: body,
+      })
+      .select()
+      .single();
+
+    if (webhookError) {
+      console.error("WEBHOOK DB ERROR:", webhookError);
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Failed to save webhook event",
+        },
+        { status: 500 }
+      );
+    }
+
+    console.log("Webhook event saved:", webhookEvent.id);
+
+    // 4. حالياً غير نستقبلو ونخزنو البيانات
+    // مازال ما غاديش نحدثو shipping
 
     return NextResponse.json({
       success: true,
+      webhook_event_id: webhookEvent.id,
     });
   } catch (error) {
     console.error("WEBHOOK ERROR:", error);
