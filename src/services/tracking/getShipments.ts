@@ -26,6 +26,9 @@ export async function getShipments() {
       customer_city,
       customer_address,
 
+      courier_name,
+      courier_phone,
+
       parcel_product,
       parcel_color,
       parcel_size,

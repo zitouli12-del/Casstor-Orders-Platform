@@ -29,6 +29,10 @@ export interface Shipment {
 
   customer_address: string | null;
 
+  courier_name: string | null;
+
+  courier_phone: string | null;
+
   parcel_product: string | null;
 
   parcel_color: string | null;
@@ -50,27 +54,16 @@ export interface Shipment {
 
   orders: {
     id: number;
-
     created_at: string;
-
     product: string;
-
     name: string | null;
-
     phone: string | null;
-
     city: string | null;
-
     address: string | null;
-
     color: string | null;
-
     size: string | null;
-
     price: number | null;
-
     source: string | null;
-
     notes: string | null;
   } | null;
 }

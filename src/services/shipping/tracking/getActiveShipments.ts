@@ -28,6 +28,8 @@ export async function getActiveShipments({
       shipping_status,
       shipping_situation,
       shipping_note,
+      courier_name,
+      courier_phone,
       provider
     `)
     .eq("store_id", storeId)

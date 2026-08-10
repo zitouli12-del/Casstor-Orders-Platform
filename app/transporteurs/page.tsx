@@ -23,6 +23,10 @@ interface ShippingProvider {
   provider_name: string;
   client_id: string;
   api_key: string;
+
+  webhook_secret: string | null;
+  webhook_enabled: boolean;
+
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -100,6 +104,8 @@ export default function TransporteursPage() {
   // API Integration states
   const [apiKey, setApiKey] = useState("");
   const API_URL = "https://app.casstorpro.space/api/orders";
+  const WEBHOOK_BASE_URL =
+    "https://app.casstorpro.space/api/webhooks/shipping";
 
   useEffect(() => {
     fetchProviders();
@@ -201,6 +207,14 @@ async function fetchApiKey() {
 
     return matchesSearch;
   });
+
+  const ozonProvider = providers.find(
+    (provider) => provider.provider_code === "ozon"
+  );
+  const webhookUrl =
+    ozonProvider?.webhook_secret
+      ? `${WEBHOOK_BASE_URL}/${ozonProvider.webhook_secret}`
+      : null;
 
   const startEditing = (provider: ShippingProvider) => {
     setEditingId(provider.id);
@@ -454,109 +468,411 @@ const fieldLabels: { [key: string]: string } = {
   }
 
   return (
-    <div className="space-y-6 bg-slate-50 min-h-screen p-4 sm:p-6 md:p-8">
-      
-      {/* Toast Notification */}
+    <div className="min-h-screen w-full bg-slate-50 p-4 sm:p-6 md:p-8">
+      <div className="w-full space-y-6">
+      {/* =========================
+          TOAST
+      ========================== */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-lg flex items-center gap-3 ${
-          toast.type === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 
-          toast.type === 'error' ? 'bg-red-50 border border-red-200 text-red-800' :
-          'bg-blue-50 border border-blue-200 text-blue-800'
-        }`}>
-          {toast.type === 'success' ? <CheckCircle2 size={20} className="text-green-600" /> : <AlertCircle size={20} className="text-red-600" />}
+        <div
+          className={`fixed right-5 top-5 z-[100] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-xl ${
+            toast.type === "success"
+              ? "border-green-200 bg-green-50 text-green-800"
+              : toast.type === "error"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-blue-200 bg-blue-50 text-blue-800"
+          }`}
+        >
+          {toast.type === "success" ? (
+            <CheckCircle2 size={20} className="text-green-600" />
+          ) : (
+            <AlertCircle size={20} className="text-red-600" />
+          )}
+
           <span className="font-medium">{toast.message}</span>
         </div>
       )}
 
+      {/* =========================
+          HEADER
+      ========================== */}
       <TransporteursHeader
         onAddProvider={() => setIsAddModalOpen(true)}
       />
 
+      {/* =========================
+          SEARCH
+      ========================== */}
       <TransporteursSearchBar
         value={search}
         onChange={setSearch}
       />
 
-      <TransporteursProvidersGrid
-        providers={filteredProviders}
-        editingId={editingId}
-        editedFields={editedFields}
-        isSaving={isSaving}
-        isTesting={isTesting}
-        showApiKeys={showApiKeys}
-        onStartEditing={startEditing}
-        onCancelEditing={cancelEditing}
-        onFieldChange={handleFieldChange}
-        onSave={handleSave}
-        onTestConnection={handleTestConnection}
-        onToggleShowApiKey={toggleShowApiKey}
-        onCopyToClipboard={copyToClipboard}
-        getProviderFields={getProviderFields}
-        getProviderLabel={getProviderLabel}
-        getRequiredFields={getRequiredFields}
-        getActiveStatusColor={getActiveStatusColor}
-        getStatusIcon={getStatusIcon}
-      />
+      {/* =========================
+          TRANSPORTEURS
+      ========================== */}
+      <section>
+        <TransporteursProvidersGrid
+          providers={filteredProviders}
+          editingId={editingId}
+          editedFields={editedFields}
+          isSaving={isSaving}
+          isTesting={isTesting}
+          showApiKeys={showApiKeys}
+          onStartEditing={startEditing}
+          onCancelEditing={cancelEditing}
+          onFieldChange={handleFieldChange}
+          onSave={handleSave}
+          onTestConnection={handleTestConnection}
+          onToggleShowApiKey={toggleShowApiKey}
+          onCopyToClipboard={copyToClipboard}
+          getProviderFields={getProviderFields}
+          getProviderLabel={getProviderLabel}
+          getRequiredFields={getRequiredFields}
+          getActiveStatusColor={getActiveStatusColor}
+          getStatusIcon={getStatusIcon}
+        />
+      </section>
 
-      {/* API Integration Card */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-        <div className="bg-white px-6 py-4 border-b border-slate-200">
-          <h3 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-            <Key size={20} className="text-orange-500" />
-            🔑 API Integration
-          </h3>
-        </div>
-        <div className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-medium text-slate-600 flex items-center gap-1.5 mb-1.5">
-              <Globe size={14} />
-              API Endpoint
-            </label>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  value={API_URL}
-                  disabled
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 text-sm cursor-not-allowed"
-                />
-              </div>
-              <button
-                onClick={() => copyToClipboard(API_URL)}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200"
-                title="Copier"
-              >
-                <Copy size={16} className="text-slate-600" />
-              </button>
-            </div>
-          </div>
+      {/* =========================
+          INTEGRATIONS
+      ========================== */}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
-          <div>
-            <label className="text-xs font-medium text-slate-600 flex items-center gap-1.5 mb-1.5">
-              <Key size={14} />
-              API Key
-            </label>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <input
-                  type="password"
-                  value={apiKey}
-                  disabled
-                  className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-500 text-sm cursor-not-allowed"
-                />
+        {/* Integration Header */}
+        <div className="border-b border-slate-200 bg-white px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
+                  <Globe size={18} />
+                </div>
+
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800">
+                    Intégrations
+                  </h2>
+
+                  <p className="text-sm text-slate-500">
+                    Connectez votre boutique à vos services Casstor.
+                  </p>
+                </div>
               </div>
-              <button
-                onClick={() => copyToClipboard(apiKey)}
-                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200"
-                title="Copier"
-              >
-                <Copy size={16} className="text-slate-600" />
-              </button>
             </div>
+
+            {ozonProvider && (
+              <div className="flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-3 py-1.5">
+                <span className="h-2 w-2 rounded-full bg-orange-500" />
+
+                <span className="text-xs font-semibold text-orange-700">
+                  Ozon Express
+                </span>
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
+        {/* Integration Content */}
+        <div className="p-5 sm:p-6">
+
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+
+            {/* =========================
+                API INTEGRATION
+            ========================== */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/60">
+
+              <div className="border-b border-slate-200 bg-white px-5 py-4">
+                <div className="flex items-center gap-3">
+
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
+                    <Key size={19} />
+                  </div>
+
+                  <div>
+                    <h3 className="font-semibold text-slate-800">
+                      API
+                    </h3>
+
+                    <p className="text-xs text-slate-500">
+                      Recevez les commandes depuis vos Landing Pages.
+                    </p>
+                  </div>
+
+                </div>
+              </div>
+
+              <div className="space-y-5 p-5">
+
+                {/* API Endpoint */}
+                <div>
+                  <label className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    <Globe size={13} />
+                    API Endpoint
+                  </label>
+
+                  <div className="flex gap-2">
+
+                    <input
+                      type="text"
+                      value={API_URL}
+                      readOnly
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-600 outline-none"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(API_URL)}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-100"
+                      title="Copier"
+                    >
+                      <Copy size={15} />
+                    </button>
+
+                  </div>
+                </div>
+
+                {/* API Key */}
+                <div>
+                  <label className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    <Key size={13} />
+                    API Key
+                  </label>
+
+                  <div className="flex gap-2">
+
+                    <input
+                      type="password"
+                      value={apiKey}
+                      readOnly
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-600 outline-none"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(apiKey)}
+                      disabled={!apiKey}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Copier"
+                    >
+                      <Copy size={15} />
+                    </button>
+
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <p className="text-xs leading-5 text-slate-500">
+                    Utilisez cet endpoint et votre clé API pour envoyer
+                    automatiquement vos commandes vers Casstor.
+                  </p>
+                </div>
+
+              </div>
+            </div>
+
+            {/* =========================
+                WEBHOOK INTEGRATION
+            ========================== */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/60">
+
+              <div className="border-b border-slate-200 bg-white px-5 py-4">
+                <div className="flex items-center justify-between gap-4">
+
+                  <div className="flex items-center gap-3">
+
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                      <Globe size={19} />
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold text-slate-800">
+                        Webhook
+                      </h3>
+
+                      <p className="text-xs text-slate-500">
+                        Recevez automatiquement les mises à jour Ozon.
+                      </p>
+                    </div>
+
+                  </div>
+
+                  {ozonProvider && (
+                    <div
+                      className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                        ozonProvider.webhook_enabled
+                          ? "border border-green-200 bg-green-50 text-green-700"
+                          : "border border-red-200 bg-red-50 text-red-700"
+                      }`}
+                    >
+                      {ozonProvider.webhook_enabled ? (
+                        <>
+                          <CheckCircle2 size={13} />
+                          Actif
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle size={13} />
+                          Inactif
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+              </div>
+
+              <div className="p-5">
+
+                {!ozonProvider ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex items-start gap-3">
+
+                      <AlertCircle
+                        size={19}
+                        className="mt-0.5 shrink-0 text-amber-600"
+                      />
+
+                      <div>
+                        <p className="text-sm font-semibold text-amber-800">
+                          Ozon Express n'est pas configuré
+                        </p>
+
+                        <p className="mt-1 text-xs leading-5 text-amber-700">
+                          Configurez d'abord Ozon Express pour obtenir
+                          votre URL Webhook.
+                        </p>
+                      </div>
+
+                    </div>
+                  </div>
+                ) : !webhookUrl ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                    <div className="flex items-start gap-3">
+
+                      <AlertCircle
+                        size={19}
+                        className="mt-0.5 shrink-0 text-red-600"
+                      />
+
+                      <div>
+                        <p className="text-sm font-semibold text-red-800">
+                          URL Webhook indisponible
+                        </p>
+
+                        <p className="mt-1 text-xs leading-5 text-red-700">
+                          Aucun secret Webhook n'est configuré pour
+                          ce transporteur.
+                        </p>
+                      </div>
+
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+
+                    {/* Webhook URL */}
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                          <Globe size={13} />
+                          Webhook URL
+                        </label>
+
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                          Ozon Express
+                        </span>
+                      </div>
+
+                      <div className="flex gap-2">
+
+                        <input
+                          type="text"
+                          value={webhookUrl}
+                          readOnly
+                          className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-600 outline-none"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(webhookUrl)}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-600 transition hover:bg-blue-100"
+                          title="Copier"
+                        >
+                          <Copy size={15} />
+                        </button>
+
+                      </div>
+                    </div>
+
+                    {/* Webhook instructions */}
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+
+                      <div className="flex items-start gap-3">
+
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                          <Globe size={15} />
+                        </div>
+
+                        <div>
+                          <p className="text-sm font-semibold text-blue-800">
+                            Configuration Ozon Express
+                          </p>
+
+                          <p className="mt-1 text-xs leading-5 text-blue-700">
+                            Copiez cette URL et ajoutez-la dans la
+                            section Webhooks de votre compte Ozon Express.
+                            Vous recevrez automatiquement les mises à jour
+                            de vos expéditions.
+                          </p>
+                        </div>
+
+                      </div>
+
+                    </div>
+
+                    {/* Webhook status */}
+                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+
+                      <div>
+                        <p className="text-xs font-semibold text-slate-700">
+                          Réception des événements
+                        </p>
+
+                        <p className="mt-0.5 text-[11px] text-slate-500">
+                          Mises à jour automatiques des expéditions
+                        </p>
+                      </div>
+
+                      {ozonProvider.webhook_enabled ? (
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-green-600">
+                          <CheckCircle2 size={15} />
+                          Activé
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-red-600">
+                          <AlertCircle size={15} />
+                          Désactivé
+                        </div>
+                      )}
+
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* =========================
+          ADD PROVIDER MODAL
+      ========================== */}
       <AddProviderModal
         isOpen={isAddModalOpen}
         onClose={() => {
@@ -575,16 +891,22 @@ const fieldLabels: { [key: string]: string } = {
         }}
         newProviderFields={newProviderFields}
         onFieldChange={(field, value) => {
-          setNewProviderFields(prev => ({ ...prev, [field]: value }));
+          setNewProviderFields((prev) => ({
+            ...prev,
+            [field]: value,
+          }));
         }}
         showApiKey={showModalApiKey}
-        onToggleShowApiKey={() => setShowModalApiKey(!showModalApiKey)}
+        onToggleShowApiKey={() =>
+          setShowModalApiKey(!showModalApiKey)
+        }
         onCopyToClipboard={copyToClipboard}
         availableProviders={AVAILABLE_PROVIDERS}
         existingProviders={providers}
         getProviderFields={getProviderFields}
         getRequiredFields={getRequiredFields}
       />
+      </div>
     </div>
   );
 }

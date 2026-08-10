@@ -20,28 +20,68 @@ export function parseOzonNote(
 
   const note = rawNote.trim();
 
-  // 2. البحث على صيغة Ozon ديال livreur
-  const courierMatch = note.match(
-    /<b>\s*Livreur:\s*<\/b>\s*([\s\S]*?)\s*<br\s*\/?>\s*<b>\s*T[ée]l[ée]phone:\s*<\/b>\s*([0-9+\s()-]+)\s*/i
+  // 2. نحيدو HTML ديال Ozon
+  const plainText = note
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  console.log("========== PARSE NOTE ==========");
+  console.log("RAW NOTE:", note);
+  console.log("PLAIN TEXT:", plainText);
+
+  // 3. نقلبو على Livreur
+  const livreurMatch = plainText.match(
+    /Livreur\s*:\s*(.*)/i
   );
 
-  if (courierMatch) {
-    const courierName = courierMatch[1].trim();
-    const courierPhone = courierMatch[2].trim();
+  if (livreurMatch) {
+    const afterLivreur = livreurMatch[1].trim();
 
-    return {
-      courierName,
-      courierPhone,
-      note: null,
-      type: "courier",
-    };
+    console.log("AFTER LIVREUR:", afterLivreur);
+
+    // 4. نقلبو على رقم الهاتف مباشرة
+    // ما يهمناش واش مكتوب Téléphone / Telephone / أي label آخر
+    const phoneMatch = afterLivreur.match(
+      /(?:\+212\s*)?0?\d(?:[\s().-]*\d){8,}/
+    );
+
+    console.log("PHONE MATCH:", phoneMatch);
+
+    if (phoneMatch) {
+      const courierPhone = phoneMatch[0].trim();
+
+      // 5. الاسم هو كلشي اللي قبل رقم الهاتف
+      // ونحيدو آخر label بحال Téléphone: / Telephone: / T�l�phone:
+      const courierName = afterLivreur
+        .slice(0, phoneMatch.index)
+        .replace(/\s+\S+\s*:\s*$/i, "")
+        .trim();
+
+      console.log("COURIER NAME:", courierName);
+      console.log("COURIER PHONE:", courierPhone);
+
+      if (courierName && courierPhone) {
+        console.log("========== COURIER FOUND ==========");
+
+        return {
+          courierName,
+          courierPhone,
+          note: null,
+          type: "courier",
+        };
+      }
+    }
   }
 
-  // 3. Note عادية
+  // 6. Note عادية
+  console.log("========== NORMAL NOTE ==========");
+
   return {
     courierName: null,
     courierPhone: null,
-    note: note,
+    note,
     type: "note",
   };
 }

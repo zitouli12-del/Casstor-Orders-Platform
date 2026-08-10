@@ -14,10 +14,7 @@ export async function POST(
   try {
     const { secret } = await params;
 
-    // =========================================================
-    // 1. البحث عن Provider باستعمال Webhook Secret
-    // =========================================================
-
+    // 1. Find provider using webhook secret
     const { data: provider, error: providerError } = await supabase
       .from("shipping_providers")
       .select(`
@@ -42,10 +39,7 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 2. قراءة Webhook Payload
-    // =========================================================
-
+    // 2. Read Ozon payload
     const body = await request.json();
 
     console.log("========== SHIPPING WEBHOOK ==========");
@@ -54,79 +48,77 @@ export async function POST(
     console.log("Webhook body:", body);
     console.log("======================================");
 
-    // =========================================================
-    // 3. استخراج المعلومات الأساسية
-    // =========================================================
-
-    const orderId = body?.orderId;
-    const orderStatus = body?.orderStatus ?? null;
-    const situation = body?.situation ?? null;
-    const rawNote = body?.note ?? null;
-
-    if (!orderId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "orderId missing",
-        },
-        { status: 400 }
-      );
+    // 3. Only process Ozon for now
+    if (provider.provider_code !== "ozon") {
+      return NextResponse.json({
+        success: true,
+        message: "Provider received but not processed",
+      });
     }
 
-    // =========================================================
-    // 4. تخزين الـ Webhook الخام
-    // =========================================================
+    const orderId = body?.orderId;
+    const orderStatus = body?.orderStatus;
+    const situation = body?.situation;
+    const note = body?.note ?? "";
 
-    const { data: webhookEvent, error: webhookInsertError } = await supabase
+    // 4. Save raw webhook event first
+    const { data: webhookEvent, error: webhookError } = await supabase
       .from("shipping_webhook_events")
       .insert({
         provider_id: provider.id,
         store_id: provider.store_id,
-        order_id: String(orderId),
-        order_status: orderStatus,
-        situation,
-        note: rawNote,
+        order_id: orderId ?? null,
+        order_status: orderStatus ?? null,
+        situation: situation ?? null,
+        note: note || null,
         payload: body,
       })
       .select("id")
       .single();
 
-    if (webhookInsertError) {
+    if (webhookError) {
       console.error(
         "WEBHOOK EVENT INSERT ERROR:",
-        webhookInsertError
+        webhookError
       );
 
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to store webhook event",
+          error: "Failed to save webhook event",
         },
         { status: 500 }
       );
     }
 
-    // =========================================================
-    // 5. البحث عن الشحنة باستعمال Tracking Number
-    // =========================================================
+    // 5. orderId is the Ozon tracking number
+    if (!orderId) {
+      console.log("Webhook has no orderId");
 
-    const { data: shipment, error: shipmentError } = await supabase
-      .from("shipping")
-      .select(`
-        id,
-        tracking_number,
-        provider,
-        store_id,
-        shipping_status,
-        shipping_situation,
-        shipping_note,
-        courier_name,
-        courier_phone
-      `)
-      .eq("tracking_number", String(orderId))
-      .eq("provider", provider.provider_code)
-      .eq("store_id", provider.store_id)
-      .maybeSingle();
+      return NextResponse.json({
+        success: true,
+        processed: false,
+        reason: "Missing orderId",
+      });
+    }
+
+    // 6. Find shipment using tracking number + store
+    const { data: shipment, error: shipmentError } =
+      await supabase
+        .from("shipping")
+        .select(`
+          id,
+          tracking_number,
+          store_id,
+          shipping_status,
+          shipping_situation,
+          courier_name,
+          courier_phone,
+          shipping_note
+        `)
+        .eq("tracking_number", String(orderId))
+        .eq("store_id", provider.store_id)
+        .maybeSingle();
 
     if (shipmentError) {
       console.error(
@@ -143,96 +135,117 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 6. Tracking ما لقايناهش
-    // =========================================================
-
     if (!shipment) {
-      console.warn(
-        `Shipment not found for tracking: ${orderId}`
+      console.log(
+        "Shipment not found:",
+        orderId
       );
 
       return NextResponse.json({
         success: true,
         processed: false,
         reason: "Shipment not found",
-        webhook_event_id: webhookEvent.id,
+        trackingNumber: orderId,
       });
     }
 
-    // =========================================================
-    // 7. تحليل Note ديال Ozon
-    // =========================================================
-
-    const parsedNote = parseOzonNote(rawNote);
+    // 7. Parse note
+    const parsedNote = parseOzonNote(note);
 
     console.log("Parsed note:", parsedNote);
 
-    // =========================================================
-    // 8. بناء البيانات اللي غادي نحدثو
-    // =========================================================
+    // 8. Prepare update
+    // IMPORTANT:
+    // Each webhook only updates the information
+    // that is actually present in that webhook.
+    // We NEVER clear old information just because
+    // the new webhook does not contain it.
+    const updateData: Record<string, unknown> = {};
 
-    const updateData: Record<string, unknown> = {
-      // situation ديما كتتحدث بالقيمة الجديدة
-      shipping_situation: situation,
-
-      // وقت آخر Webhook وصل للشحنة
-      last_sync_at: new Date().toISOString(),
-    };
-
-    // =========================================================
-    // 9. Note خاوية
-    // =========================================================
-
-    if (parsedNote.type === "empty") {
-      // ما نبدلو لا courier لا note
-      console.log(
-        "Webhook note is empty - keeping existing courier/note data"
-      );
+    // --------------------------------------------------
+    // 8.1 Update order status only if received
+    // --------------------------------------------------
+    if (
+      orderStatus !== undefined &&
+      orderStatus !== null &&
+      String(orderStatus).trim() !== ""
+    ) {
+      updateData.shipping_status = String(orderStatus);
     }
 
-    // =========================================================
-    // 10. Note فيها Livreur + Téléphone
-    // =========================================================
-
-    else if (parsedNote.type === "courier") {
-      updateData.courier_name = parsedNote.courierName;
-      updateData.courier_phone = parsedNote.courierPhone;
-
-      // المعلومات القديمة ديال note كتتمسح
-      updateData.shipping_note = null;
-
-      console.log("Courier information extracted:", {
-        name: parsedNote.courierName,
-        phone: parsedNote.courierPhone,
-      });
+    // --------------------------------------------------
+    // 8.2 Update situation only if received
+    // --------------------------------------------------
+    if (
+      situation !== undefined &&
+      situation !== null &&
+      String(situation).trim() !== ""
+    ) {
+      updateData.shipping_situation = String(situation);
     }
 
-    // =========================================================
-    // 11. Note عادية
-    // =========================================================
+    // --------------------------------------------------
+    // 8.3 Courier information
+    // --------------------------------------------------
+    // If the webhook contains a courier:
+    // update courier_name + courier_phone.
+    //
+    // IMPORTANT:
+    // We DO NOT touch shipping_note here.
+    // An old normal note must remain.
+    // --------------------------------------------------
+    if (parsedNote.type === "courier") {
+      if (parsedNote.courierName) {
+        updateData.courier_name =
+          parsedNote.courierName;
+      }
 
-    else if (parsedNote.type === "note") {
-      updateData.shipping_note = parsedNote.note;
-
-      // المعلومات القديمة ديال livreur كتتمسح
-      updateData.courier_name = null;
-      updateData.courier_phone = null;
-
-      console.log(
-        "Normal shipping note:",
-        parsedNote.note
-      );
+      if (parsedNote.courierPhone) {
+        updateData.courier_phone =
+          parsedNote.courierPhone;
+      }
     }
 
-    // =========================================================
-    // 12. تحديث Shipping
-    // =========================================================
+    // --------------------------------------------------
+    // 8.4 Normal shipping note
+    // --------------------------------------------------
+    // If the webhook contains a normal note:
+    // update ONLY shipping_note.
+    //
+    // IMPORTANT:
+    // We DO NOT clear courier_name or courier_phone.
+    // --------------------------------------------------
+    if (parsedNote.type === "note") {
+      if (parsedNote.note) {
+        updateData.shipping_note =
+          parsedNote.note;
+      }
+    }
 
-    const { error: updateError } = await supabase
-      .from("shipping")
-      .update(updateData)
-      .eq("id", shipment.id);
+    // --------------------------------------------------
+    // 8.5 Empty note
+    // --------------------------------------------------
+    // If note is empty:
+    // do NOT modify:
+    // - courier_name
+    // - courier_phone
+    // - shipping_note
+    //
+    // Their previous values stay untouched.
+    // --------------------------------------------------
+
+    // Always update last synchronization time
+    updateData.last_sync_at =
+      new Date().toISOString();
+
+    // --------------------------------------------------
+    // 9. Update shipping
+    // --------------------------------------------------
+    const { error: updateError } =
+      await supabase
+        .from("shipping")
+        .update(updateData)
+        .eq("id", shipment.id);
 
     if (updateError) {
       console.error(
@@ -249,16 +262,17 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 13. تعليم Webhook بأنه تعالج بنجاح
-    // =========================================================
-
-    const { error: processedError } = await supabase
-      .from("shipping_webhook_events")
-      .update({
-        processed_at: new Date().toISOString(),
-      })
-      .eq("id", webhookEvent.id);
+    // --------------------------------------------------
+    // 10. Mark webhook event as processed
+    // --------------------------------------------------
+    const { error: processedError } =
+      await supabase
+        .from("shipping_webhook_events")
+        .update({
+          processed_at:
+            new Date().toISOString(),
+        })
+        .eq("id", webhookEvent.id);
 
     if (processedError) {
       console.error(
@@ -267,28 +281,33 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 14. النتيجة
-    // =========================================================
+    console.log(
+      "========== WEBHOOK PROCESSED =========="
+    );
 
-    console.log("========== WEBHOOK PROCESSED ==========");
-    console.log("Tracking:", orderId);
-    console.log("Situation:", situation);
-    console.log("Note type:", parsedNote.type);
     console.log("Shipment ID:", shipment.id);
-    console.log("=======================================");
+    console.log("Tracking:", orderId);
+    console.log("Order Status:", orderStatus);
+    console.log("Situation:", situation);
+    console.log("Parsed Note:", parsedNote);
+    console.log("Update Data:", updateData);
+
+    console.log(
+      "======================================="
+    );
 
     return NextResponse.json({
       success: true,
       processed: true,
-      webhook_event_id: webhookEvent.id,
-      shipment_id: shipment.id,
-      tracking_number: orderId,
-      situation,
-      note_type: parsedNote.type,
+      shipmentId: shipment.id,
+      trackingNumber: orderId,
+      updated: updateData,
     });
   } catch (error) {
-    console.error("WEBHOOK ERROR:", error);
+    console.error(
+      "WEBHOOK ERROR:",
+      error
+    );
 
     return NextResponse.json(
       {
