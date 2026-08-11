@@ -3,6 +3,7 @@ import {
   ChevronDown,
   Edit,
   History,
+  MessageCircle,
   Package,
   ShieldAlert,
   Users,
@@ -14,6 +15,8 @@ import { analyzeOrderPhoneHistory } from "@/src/services/orders/analyzeOrderPhon
 import { analyzeClientShippingHistory } from "@/src/services/tracking/analyzeClientShippingHistory";
 import { BlacklistEntry } from "@/src/services/blacklist/getBlacklistEntryByPhone";
 import { findBlacklistEntryByPhone } from "@/src/services/blacklist/findBlacklistEntryByPhone";
+import { useState } from "react";
+import WhatsAppChatDrawer from "./WhatsAppChatDrawer";
 
 interface OrdersTableProps {
   filteredOrders: OrderWithCompatibleShipments[];
@@ -142,6 +145,8 @@ export default function OrdersTable({
   getStatusColor,
   openChangeClientDrawer,
 }: OrdersTableProps) {
+    const [whatsappOrder, setWhatsappOrder] =
+    useState<OrderWithCompatibleShipments | null>(null);
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
@@ -420,6 +425,14 @@ export default function OrdersTable({
                         >
                           <Edit size={20} strokeWidth={2.2} />
                         </button>
+                        <button
+  type="button"
+  onClick={() => setWhatsappOrder(order)}
+  className="flex h-9 w-9 items-center justify-center rounded-lg text-green-600 transition hover:bg-green-100"
+  title="Ouvrir WhatsApp"
+>
+  <MessageCircle size={20} strokeWidth={2.2} />
+</button>
                       </div>
                     </td>
                   </tr>
@@ -429,6 +442,12 @@ export default function OrdersTable({
           </tbody>
         </table>
       </div>
+
+      <WhatsAppChatDrawer
+        order={whatsappOrder}
+        open={whatsappOrder !== null}
+        onClose={() => setWhatsappOrder(null)}
+      />
     </div>
   );
 }

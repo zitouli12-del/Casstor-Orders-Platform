@@ -16,6 +16,7 @@ import TransporteursHeader from "@/src/components/transporteurs/TransporteursHea
 import TransporteursSearchBar from "@/src/components/transporteurs/TransporteursSearchBar";
 import TransporteursProvidersGrid from "@/src/components/transporteurs/TransporteursProvidersGrid";
 import AddProviderModal from "@/src/components/transporteurs/AddProviderModal";
+import WhatsAppConnectionCard from "@/src/components/transporteurs/WhatsAppConnectionCard";
 
 interface ShippingProvider {
   id: string;
@@ -865,6 +866,8 @@ const fieldLabels: { [key: string]: string } = {
 
               </div>
             </div>
+
+          <WhatsAppConnectionCard />
 
           </div>
         </div>
