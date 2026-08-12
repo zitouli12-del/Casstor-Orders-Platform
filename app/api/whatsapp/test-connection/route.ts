@@ -51,10 +51,7 @@ export async function POST() {
         .maybeSingle();
 
     if (connectionError) {
-      console.error(
-        "Erreur récupération connexion WhatsApp:",
-        connectionError
-      );
+      console.error("Erreur récupération connexion WhatsApp:", connectionError);
 
       return NextResponse.json(
         {
@@ -91,169 +88,176 @@ export async function POST() {
       );
     }
 
-    const token = connection.access_token;
+    const token = String(connection.access_token).trim();
+    const wabaId = String(connection.waba_id).trim();
+    const phoneNumberId = String(connection.phone_number_id).trim();
 
     console.log("======================================");
     console.log("===== WHATSAPP ACCESS DIAGNOSTIC =====");
-    console.log("Configured WABA:", connection.waba_id);
-    console.log(
-      "Configured Phone Number ID:",
-      connection.phone_number_id
-    );
+    console.log("WABA:", wabaId);
+    console.log("PHONE:", phoneNumberId);
+    console.log("TOKEN LENGTH:", token.length);
+    console.log("TOKEN PREFIX:", token.substring(0, 12));
+    console.log("TOKEN SUFFIX:", token.substring(token.length - 8));
     console.log("======================================");
 
     // --------------------------------------------------
-    // 4. WABAs we want to test
+    // 4. TEST WABA
     // --------------------------------------------------
 
-    const wabas = [
-      {
-        name: "Configured WABA",
-        id: String(connection.waba_id),
-      },
-      {
-        name: "Casstor",
-        id: "1572364464617196",
-      },
-      {
-        name: "casstor maroc",
-        id: "1002025162873956",
-      },
-    ];
+    const wabaUrl =
+      `https://graph.facebook.com/${GRAPH_API_VERSION}` +
+      `/${encodeURIComponent(wabaId)}` +
+      `?fields=id,name`;
 
-    // Remove duplicates
-    const uniqueWabas = Array.from(
-      new Map(wabas.map((item) => [item.id, item])).values()
+    const wabaResponse = await fetch(wabaUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    const wabaData = await wabaResponse.json();
+
+    console.log("===== WABA RESPONSE =====");
+    console.log(JSON.stringify(wabaData, null, 2));
+
+    // --------------------------------------------------
+    // 5. TEST WABA PHONE NUMBERS
+    // --------------------------------------------------
+
+    const phonesUrl =
+      `https://graph.facebook.com/${GRAPH_API_VERSION}` +
+      `/${encodeURIComponent(wabaId)}` +
+      `/phone_numbers` +
+      `?fields=id,display_phone_number,verified_name,quality_rating`;
+
+    const phonesResponse = await fetch(phonesUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    const phonesData = await phonesResponse.json();
+
+    console.log("===== WABA PHONE NUMBERS RESPONSE =====");
+    console.log(JSON.stringify(phonesData, null, 2));
+
+    // --------------------------------------------------
+    // 6. TEST PHONE NUMBER DIRECTLY
+    // --------------------------------------------------
+
+    const phoneUrl =
+      `https://graph.facebook.com/${GRAPH_API_VERSION}` +
+      `/${encodeURIComponent(phoneNumberId)}` +
+      `?fields=id,display_phone_number,verified_name,quality_rating,status`;
+
+    const phoneResponse = await fetch(phoneUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    const phoneData = await phoneResponse.json();
+
+    console.log("===== DIRECT PHONE RESPONSE =====");
+    console.log(JSON.stringify(phoneData, null, 2));
+
+    // --------------------------------------------------
+    // 7. DEBUG TOKEN
+    // --------------------------------------------------
+
+    const debugUrl =
+      `https://graph.facebook.com/${GRAPH_API_VERSION}` +
+      `/debug_token?input_token=${encodeURIComponent(token)}`;
+
+    const debugResponse = await fetch(debugUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    const debugData = await debugResponse.json();
+
+    console.log("===== DEBUG TOKEN RESPONSE =====");
+    console.log(JSON.stringify(debugData, null, 2));
+
+    // --------------------------------------------------
+    // 8. PARSE PHONES
+    // --------------------------------------------------
+
+    const phones = Array.isArray(phonesData?.data)
+      ? phonesData.data
+      : [];
+
+    const matchingPhone = phones.find(
+      (phone: { id?: string }) =>
+        String(phone.id) === phoneNumberId
     );
 
-    const results = [];
-
     // --------------------------------------------------
-    // 5. Test every WABA
+    // 9. FINAL DIAGNOSTIC
     // --------------------------------------------------
 
-    for (const waba of uniqueWabas) {
-      console.log(
-        `===== TEST WABA: ${waba.name} (${waba.id}) =====`
-      );
+    const result = {
+      configured_waba_id: wabaId,
+      configured_phone_number_id: phoneNumberId,
 
-      // Test WABA itself
-      const wabaUrl =
-        `https://graph.facebook.com/${GRAPH_API_VERSION}` +
-        `/${encodeURIComponent(waba.id)}` +
-        `?fields=id,name`;
+      token: {
+        length: token.length,
+        prefix: token.substring(0, 12),
+        suffix: token.substring(token.length - 8),
+      },
 
-      const wabaResponse = await fetch(wabaUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        cache: "no-store",
-      });
+      waba: {
+        http_status: wabaResponse.status,
+        ok: wabaResponse.ok,
+        data: wabaData,
+      },
 
-      const wabaData = await wabaResponse.json();
-
-      console.log(
-        "WABA RESPONSE:",
-        JSON.stringify(wabaData, null, 2)
-      );
-
-      // Test phone numbers belonging to WABA
-      const phonesUrl =
-        `https://graph.facebook.com/${GRAPH_API_VERSION}` +
-        `/${encodeURIComponent(waba.id)}` +
-        `/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating`;
-
-      const phonesResponse = await fetch(phonesUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        cache: "no-store",
-      });
-
-      const phonesData = await phonesResponse.json();
-
-      console.log(
-        "PHONE NUMBERS RESPONSE:",
-        JSON.stringify(phonesData, null, 2)
-      );
-
-      const phones = Array.isArray(phonesData?.data)
-        ? phonesData.data
-        : [];
-
-      const matchingPhone = phones.find(
-        (phone: { id?: string }) =>
-          String(phone.id) ===
-          String(connection.phone_number_id)
-      );
-
-      results.push({
-        waba_name: waba.name,
-        waba_id: waba.id,
-        waba_accessible: wabaResponse.ok,
-        waba_response: wabaData,
-        phone_numbers_accessible: phonesResponse.ok,
-        phone_numbers: phones,
+      phone_numbers: {
+        http_status: phonesResponse.status,
+        ok: phonesResponse.ok,
+        data: phonesData,
         configured_phone_found: !!matchingPhone,
-      });
-    }
-
-    // --------------------------------------------------
-    // 6. Final result
-    // --------------------------------------------------
-
-    const configuredResult = results.find(
-      (result) =>
-        result.waba_id === String(connection.waba_id)
-    );
-
-    const configuredPhoneFound =
-      configuredResult?.configured_phone_found === true;
-
-    console.log("======================================");
-    console.log("FINAL DIAGNOSTIC RESULT");
-    console.log(
-      JSON.stringify(results, null, 2)
-    );
-    console.log("======================================");
-
-    if (configuredPhoneFound) {
-      return NextResponse.json({
-        success: true,
-        message:
-          "Le WABA configuré possède bien accès au Phone Number.",
-        configured_waba_id: connection.waba_id,
-        configured_phone_number_id:
-          connection.phone_number_id,
-        results,
-      });
-    }
-
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          "Le Access Token ne permet pas de retrouver le Phone Number configuré dans le WABA configuré.",
-        configured_waba_id: connection.waba_id,
-        configured_phone_number_id:
-          connection.phone_number_id,
-        results,
       },
-      { status: 400 }
-    );
+
+      direct_phone: {
+        http_status: phoneResponse.status,
+        ok: phoneResponse.ok,
+        data: phoneData,
+      },
+
+      debug_token: {
+        http_status: debugResponse.status,
+        ok: debugResponse.ok,
+        data: debugData,
+      },
+    };
+
+    console.log("======================================");
+    console.log("FINAL WHATSAPP DIAGNOSTIC");
+    console.log(JSON.stringify(result, null, 2));
+    console.log("======================================");
+
+    return NextResponse.json({
+      success: true,
+      result,
+    });
   } catch (error) {
-    console.error(
-      "Erreur diagnostic WhatsApp:",
-      error
-    );
+    console.error("Erreur diagnostic WhatsApp:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message:
-          "Une erreur inattendue est survenue.",
+        message: "Une erreur inattendue est survenue.",
       },
       { status: 500 }
     );
