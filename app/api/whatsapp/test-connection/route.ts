@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/src/lib/server";
 
-const GRAPH_API_VERSION = "v25.0";
+const GRAPH_API_VERSION = "v26.0";
 
 export async function POST() {
   try {
