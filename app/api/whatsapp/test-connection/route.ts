@@ -99,6 +99,11 @@ export async function POST() {
     });
 
     const metaData = await metaResponse.json();
+    console.log("===== META PHONE NUMBERS RESPONSE =====");
+    console.log("WABA ID:", connection.waba_id);
+    console.log("Configured Phone Number ID:", connection.phone_number_id);
+    console.log("Meta Response:", JSON.stringify(metaData, null, 2));
+    console.log("======================================");
 
     // 6. Meta returned an error
     if (!metaResponse.ok) {
