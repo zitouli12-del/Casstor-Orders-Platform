@@ -5,7 +5,6 @@ const GRAPH_API_VERSION = "v25.0";
 
 export async function POST() {
   try {
-
     const supabase = await getServerSupabase();
     // 1. Get authenticated user
     const {
@@ -85,12 +84,17 @@ export async function POST() {
       );
     }
 
-    // 5. Call Meta Graph API
-    const url =
+    // 5. Test the Phone Number directly
+    const phoneUrl =
       `https://graph.facebook.com/${GRAPH_API_VERSION}` +
-      `/${encodeURIComponent(connection.waba_id)}/phone_numbers`;
+      `/${encodeURIComponent(connection.phone_number_id)}` +
+      `?fields=id,display_phone_number,verified_name,quality_rating`;
 
-    const metaResponse = await fetch(url, {
+    console.log("===== META PHONE DIRECT TEST =====");
+    console.log("Phone Number ID:", connection.phone_number_id);
+    console.log("URL:", phoneUrl);
+
+    const phoneResponse = await fetch(phoneUrl, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${connection.access_token}`,
@@ -98,59 +102,58 @@ export async function POST() {
       cache: "no-store",
     });
 
-    const metaData = await metaResponse.json();
-    console.log("===== META PHONE NUMBERS RESPONSE =====");
-    console.log("WABA ID:", connection.waba_id);
-    console.log("Configured Phone Number ID:", connection.phone_number_id);
-    console.log("Meta Response:", JSON.stringify(metaData, null, 2));
-    console.log("======================================");
+    const phoneData = await phoneResponse.json();
+    console.log(
+      "Phone Direct Response:",
+      JSON.stringify(phoneData, null, 2)
+    );
+    console.log("=================================");
 
     // 6. Meta returned an error
-    if (!metaResponse.ok) {
-      console.error("Erreur Meta WhatsApp:", metaData);
+    if (!phoneResponse.ok) {
+      console.error("Erreur Meta Phone Number:", phoneData);
 
       return NextResponse.json(
         {
           success: false,
           message:
-            metaData?.error?.message ||
-            "Impossible de vérifier la connexion WhatsApp.",
+            phoneData?.error?.message ||
+            "Impossible de vérifier le Phone Number.",
+          meta_error: phoneData?.error || null,
         },
-        { status: metaResponse.status }
+        { status: phoneResponse.status }
       );
     }
 
-    // 7. Find configured phone number
-    const phoneNumbers = Array.isArray(metaData?.data)
-      ? metaData.data
-      : [];
-
-    const matchedPhone = phoneNumbers.find(
-      (phone: { id?: string }) =>
-        phone.id === connection.phone_number_id
-    );
-
-    // 8. Phone Number ID doesn't belong to this WABA
-    if (!matchedPhone) {
+    // 7. Verify returned Phone Number ID
+    if (
+      String(phoneData?.id) !==
+      String(connection.phone_number_id)
+    ) {
       return NextResponse.json(
         {
           success: false,
           message:
-            "Le Phone Number ID configuré ne correspond à aucun numéro de ce WABA.",
+            "Meta a répondu, mais le Phone Number ID retourné ne correspond pas.",
+          expected: String(connection.phone_number_id),
+          received: String(phoneData?.id || ""),
         },
         { status: 400 }
       );
     }
 
-    // 9. Everything is valid
+    // 8. Everything is valid
     return NextResponse.json({
       success: true,
       message: "Connexion WhatsApp vérifiée avec succès.",
       phone: {
-        id: matchedPhone.id,
-        display_phone_number: matchedPhone.display_phone_number,
-        verified_name: matchedPhone.verified_name,
-        quality_rating: matchedPhone.quality_rating,
+        id: phoneData.id,
+        display_phone_number:
+          phoneData.display_phone_number,
+        verified_name:
+          phoneData.verified_name,
+        quality_rating:
+          phoneData.quality_rating,
       },
     });
   } catch (error) {
