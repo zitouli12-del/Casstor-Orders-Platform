@@ -25,7 +25,8 @@ export default function RootLayout({
   const isPublicPage =
     pathname === "/" ||
     pathname === "/login" ||
-    pathname === "/signup";
+    pathname === "/signup" ||
+    pathname === "/privacy-policy";
 
   return (
     <html lang="fr" className={cn("font-sans", geist.variable)}>
