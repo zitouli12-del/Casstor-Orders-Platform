@@ -22,9 +22,90 @@ export default function WhatsAppChatDrawer({
   onClose,
 }: WhatsAppChatDrawerProps) {
   const [message, setMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!open || !order) {
     return null;
+  }
+
+  async function sendMessage() {
+    const text = message.trim();
+
+    if (!text || !order) {
+      return;
+    }
+
+    setIsSending(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/whatsapp/send-message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          order_id: order.id,
+          phone: order.phone,
+          message: text,
+        }),
+      });
+
+      const result = await response.json();
+
+      console.log("===== WHATSAPP SEND RESULT =====");
+      console.log("HTTP STATUS:", response.status);
+      console.log("API RESULT:", result);
+      console.log("META RESPONSE:", result?.meta_response);
+      console.log("META ERROR:", result?.meta_response?.error);
+      console.log("================================");
+
+      if (!response.ok || !result.success) {
+        const metaError = result?.meta_response?.error;
+
+        const metaMessage =
+          metaError?.message ||
+          result?.meta_response?.message ||
+          result?.message ||
+          "Impossible d'envoyer le message WhatsApp.";
+
+        const metaCode = metaError?.code
+          ? `Code: ${metaError.code}`
+          : "";
+
+        const metaType = metaError?.type
+          ? `Type: ${metaError.type}`
+          : "";
+
+        const fullError = [
+          metaMessage,
+          metaCode,
+          metaType,
+        ]
+          .filter(Boolean)
+          .join(" — ");
+
+        setError(fullError);
+
+        return;
+      }
+
+      // Message envoyé avec succès
+      setMessage("");
+
+      console.log("WhatsApp message sent:", result);
+    } catch (err) {
+      console.error("Erreur envoi WhatsApp:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue."
+      );
+    } finally {
+      setIsSending(false);
+    }
   }
 
   return (
@@ -103,6 +184,15 @@ export default function WhatsAppChatDrawer({
 
         </div>
 
+        {/* Error */}
+        {error && (
+          <div className="border-t border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-xs font-medium text-red-700">
+              {error}
+            </p>
+          </div>
+        )}
+
         {/* Message */}
         <div className="border-t border-slate-200 bg-white p-4">
 
@@ -111,18 +201,29 @@ export default function WhatsAppChatDrawer({
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
               placeholder="Écrire un message..."
               rows={1}
-              className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-green-400 focus:bg-white focus:ring-2 focus:ring-green-500/10"
+              disabled={isSending}
+              className="max-h-32 min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-green-400 focus:bg-white focus:ring-2 focus:ring-green-500/10 disabled:opacity-60"
             />
 
             <button
               type="button"
-              disabled={!message.trim()}
+              onClick={sendMessage}
+              disabled={!message.trim() || isSending}
               className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-green-500 text-white transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-40"
               title="Envoyer"
             >
-              <Send size={18} />
+              <Send
+                size={18}
+                className={isSending ? "animate-pulse" : ""}
+              />
             </button>
 
           </div>
