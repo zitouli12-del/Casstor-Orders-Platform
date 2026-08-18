@@ -2,6 +2,8 @@ import { supabase } from "@/src/lib/supabase";
 import { getCurrentStore } from "@/src/lib/getCurrentStore";
 import { processOrder } from "./processOrder";
 
+const BATCH_SIZE = 15;
+
 export async function processOrdersWorkflow(
   orderIds: number[]
 ) {
@@ -18,29 +20,35 @@ export async function processOrdersWorkflow(
   }
 
   if (!orders || orders.length === 0) {
-    throw new Error(
-      "Aucune commande trouvée"
-    );
+    throw new Error("Aucune commande trouvée");
   }
 
   const results = [];
 
-  for (const order of orders) {
-    const result = await processOrder(order);
+  for (let i = 0; i < orders.length; i += BATCH_SIZE) {
+    const batch = orders.slice(i, i + BATCH_SIZE);
 
-    if (result.success) {
-      await supabase
-        .from("orders")
-        .update({
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", order.id);
-    }
+    const batchResults = await Promise.all(
+      batch.map(async (order) => {
+        const result = await processOrder(order);
 
-    results.push({
-      orderId: order.id,
-      ...result,
-    });
+        if (result.success) {
+          await supabase
+            .from("orders")
+            .update({
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", order.id);
+        }
+
+        return {
+          orderId: order.id,
+          ...result,
+        };
+      })
+    );
+
+    results.push(...batchResults);
   }
 
   return {

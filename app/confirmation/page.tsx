@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   AlertCircle,
@@ -44,7 +44,7 @@ import EditOrderModal from "@/src/components/confirmation/modal/EditOrderModal";
 import ShippingPopup from "@/src/components/confirmation/ShippingPopup";
 import ConfirmStatusChangeModal from "@/src/components/confirmation/ConfirmStatusChangeModal";
 
-const ORDERS_PER_PAGE = 10;
+const ORDERS_PER_PAGE = 30;
 
 const HIDDEN_CONFIRMATION_STATUSES = [
   "annule",
@@ -101,6 +101,11 @@ export default function ConfirmationPage() {
     setIsShippingPopupOpen,
   ] = useState(false);
 
+  const [isShippingProcessing, setIsShippingProcessing] =
+    useState(false);
+
+  const shippingProcessingRef = useRef(false);
+
   const [
     selectedShippingOrders,
     setSelectedShippingOrders,
@@ -136,14 +141,14 @@ export default function ConfirmationPage() {
     setLoading(true);
 
     try {
-const ordersData = await fetchOrders();
-setOrders([...ordersData]);
+      const ordersData = await fetchOrders();
+      setOrders([...ordersData]);
 
-const shipmentsData = await getShipments();
-setShipments([...shipmentsData]);
+      const shipmentsData = await getShipments();
+      setShipments([...shipmentsData]);
 
-const blacklistData = await getBlacklist();
-setBlacklist([...blacklistData]);
+      const blacklistData = await getBlacklist();
+      setBlacklist([...blacklistData]);
 
     } catch (error) {
       console.error(
@@ -173,7 +178,7 @@ setBlacklist([...blacklistData]);
       HIDDEN_CONFIRMATION_STATUSES.includes(order.status)
     ) {
       return false;
-    }if (order.shipping_stage === "sent") {
+    } if (order.shipping_stage === "sent") {
       return false;
     }
 
@@ -492,20 +497,23 @@ setBlacklist([...blacklistData]);
     (order) => order.status === "nouvelle"
   ).length;
 
-  const totalConfirme = orders.filter(
-    (order) => order.status === "confirmé"
-  ).length;
+const totalConfirme = orders.filter(
+  (order) =>
+    order.status === "confirmé" &&
+    order.shipping_stage === "pending"
+).length;
 
   const totalPsReponse = orders.filter(
     (order) => order.status === "ps-reponse"
   ).length;
 
-  const totalOrders = orders.filter(
-    (order) =>
-      !HIDDEN_CONFIRMATION_STATUSES.includes(
-        order.status
-      )
-  ).length;
+const totalOrders = orders.filter(
+  (order) =>
+    !HIDDEN_CONFIRMATION_STATUSES.includes(
+      order.status
+    ) &&
+    order.shipping_stage === "pending"
+).length;
 
   const openShippingPopup = () => {
     setIsShippingPopupOpen(true);
@@ -515,10 +523,17 @@ setBlacklist([...blacklistData]);
   };
 
   const closeShippingPopup = () => {
+    if (shippingProcessingRef.current) {
+      return;
+    }
+
     setIsShippingPopupOpen(false);
     setSelectedShippingOrders([]);
     setSelectedCarrier("ozon");
     setShippingToast(null);
+
+    shippingProcessingRef.current = false;
+    setIsShippingProcessing(false);
   };
 
   const toggleOrderSelection = (
@@ -540,7 +555,7 @@ setBlacklist([...blacklistData]);
   const toggleAllOrders = () => {
     const allSelected = confirmedOrders.every(
       (order) =>
-        selectedShippingOrders.includes(order.id)
+        selectedShippingOrders.includes(String(order.id))
     );
 
     if (allSelected) {
@@ -549,14 +564,20 @@ setBlacklist([...blacklistData]);
     }
 
     setSelectedShippingOrders(
-      confirmedOrders.map((order) => order.id)
+      confirmedOrders.map((order) => String(order.id))
     );
   };
 
   const handleShipOrders = async () => {
-    if (selectedShippingOrders.length === 0) {
+    if (
+      selectedShippingOrders.length === 0 ||
+      shippingProcessingRef.current
+    ) {
       return;
     }
+
+    shippingProcessingRef.current = true;
+    setIsShippingProcessing(true);
 
     try {
       const response = await fetch(
@@ -588,7 +609,8 @@ setBlacklist([...blacklistData]);
       const successCount =
         result.successCount || 0;
 
-      const errorCount = result.errorCount || 0;
+      const errorCount =
+        result.errorCount || 0;
 
       setShippingToast({
         message:
@@ -603,15 +625,27 @@ setBlacklist([...blacklistData]);
 
       setOrders(refreshedOrders);
 
-      setTimeout(() => {
-        closeShippingPopup();
-        setShippingToast(null);
-      }, 2500);
+setTimeout(() => {
+  shippingProcessingRef.current = false;
+  setIsShippingProcessing(false);
+
+  closeShippingPopup();
+  setShippingToast(null);
+}, 2500);
+
     } catch (error: any) {
+      console.error(
+        "SHIPPING ERROR =",
+        error
+      );
+
       alert(
         error.message ||
           "Erreur lors de l'expédition"
       );
+
+      shippingProcessingRef.current = false;
+      setIsShippingProcessing(false);
     }
   };
 
@@ -832,6 +866,7 @@ setBlacklist([...blacklistData]);
 
       <ShippingPopup
         isOpen={isShippingPopupOpen}
+        isProcessing={isShippingProcessing}
         confirmedOrders={confirmedOrders}
         selectedShippingOrders={
           selectedShippingOrders

@@ -15,6 +15,7 @@ import { Order } from "@/src/types/Order";
 
 interface ShippingPopupProps {
   isOpen: boolean;
+  isProcessing: boolean;
   confirmedOrders: Order[];
   selectedShippingOrders: string[];
   selectedCarrier: "ozon" | "olivraison";
@@ -27,6 +28,7 @@ interface ShippingPopupProps {
 
 export default function ShippingPopup({
   isOpen,
+  isProcessing,
   confirmedOrders,
   selectedShippingOrders,
   selectedCarrier,
@@ -313,15 +315,27 @@ export default function ShippingPopup({
           </button>
           <button
             onClick={handleShipOrders}
-            disabled={selectedShippingOrders.length === 0}
+            disabled={
+              selectedShippingOrders.length === 0 ||
+              isProcessing
+            }
             className={`px-8 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-all flex items-center gap-2 shadow-sm ${
-              selectedShippingOrders.length === 0
+              selectedShippingOrders.length === 0 || isProcessing
                 ? "opacity-50 cursor-not-allowed"
                 : "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]"
             }`}
           >
-            <Truck size={18} />
-            Expédier
+            {isProcessing ? (
+              <>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Expédition en cours...
+              </>
+            ) : (
+              <>
+                <Truck size={18} />
+                Expédier
+              </>
+            )}
           </button>
         </div>
       </div>

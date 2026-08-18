@@ -8,6 +8,7 @@ import {
   FileText,
   History,
   MapPinned,
+  Package,
   Settings,
   Truck,
 } from "lucide-react";
@@ -37,6 +38,11 @@ const links = [
     title: "Bon de Livraison",
     href: "/bon-livraisons",
     icon: FileText,
+  },
+  {
+    title: "Stock",
+    href: "/stock",
+    icon: Package,
   },
   {
     title: "Paramètres",
