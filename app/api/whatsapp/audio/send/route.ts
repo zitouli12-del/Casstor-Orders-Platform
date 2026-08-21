@@ -32,16 +32,6 @@ function getSupabaseAdmin() {
   );
 }
 
-function isSupportedAudioType(type: string) {
-  return [
-    "audio/ogg",
-    "audio/aac",
-    "audio/mp4",
-    "audio/mpeg",
-    "audio/amr",
-  ].includes(type);
-}
-
 export async function POST(
   request: Request
 ) {
@@ -135,19 +125,35 @@ export async function POST(
     }
 
     // =====================================================
-    // 3. AUDIO TYPE
+    // 3. MP3 CHECK
     // =====================================================
 
     if (
-      !isSupportedAudioType(
-        file.type
-      )
+      file.type !==
+      "audio/mpeg"
     ) {
       return NextResponse.json(
         {
           success: false,
           message:
-            "Format audio non supporté. Utilisez OGG, AAC, MP4, MP3 ou AMR.",
+            "Le fichier audio doit être au format MP3 (audio/mpeg).",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    // WhatsApp audio max = 16 MB
+    if (
+      file.size >
+      16 * 1024 * 1024
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "L'audio dépasse la limite de 16 MB.",
         },
         {
           status: 400,
@@ -249,7 +255,7 @@ export async function POST(
     }
 
     // =====================================================
-    // 7. WHATSAPP CONNECTION
+    // 7. CONNECTION
     // =====================================================
 
     const {
@@ -304,24 +310,8 @@ export async function POST(
       );
     }
 
-    if (
-      !connection.phone_number_id ||
-      !connection.access_token
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Phone Number ID ou Access Token manquant.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
     // =====================================================
-    // 8. UPLOAD AUDIO TO META
+    // 8. UPLOAD MP3 TO META
     // =====================================================
 
     const uploadUrl =
@@ -338,13 +328,13 @@ export async function POST(
 
     uploadForm.append(
       "type",
-      file.type
+      "audio/mpeg"
     );
 
     uploadForm.append(
       "file",
       file,
-      file.name
+      "casstor-voice.mp3"
     );
 
     console.log(
@@ -428,10 +418,13 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Meta a refusé l'upload de l'audio.",
+
           meta_status:
             uploadResponse.status,
+
           meta_response:
             uploadData,
         },
@@ -448,8 +441,10 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Meta n'a pas retourné de media ID.",
+
           meta_response:
             uploadData,
         },
@@ -460,7 +455,7 @@ export async function POST(
     }
 
     // =====================================================
-    // 9. SEND AUDIO MESSAGE
+    // 9. SEND AUDIO
     // =====================================================
 
     const sendUrl =
@@ -485,14 +480,6 @@ export async function POST(
 
     console.log(
       "===== WHATSAPP AUDIO SEND ====="
-    );
-
-    console.log(
-      JSON.stringify(
-        sendPayload,
-        null,
-        2
-      )
     );
 
     const sendResponse =
@@ -552,6 +539,7 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Meta a refusé l'envoi de l'audio.",
 
@@ -576,7 +564,7 @@ export async function POST(
       null;
 
     // =====================================================
-    // 11. SAVE OUTGOING AUDIO
+    // 11. SAVE OUTGOING MESSAGE
     // =====================================================
 
     const {
@@ -610,7 +598,7 @@ export async function POST(
           mediaId,
 
         media_mime_type:
-          file.type,
+          "audio/mpeg",
 
         caption:
           null,
@@ -654,9 +642,6 @@ export async function POST(
 
         whatsapp_message_id:
           whatsappMessageId,
-
-        meta_response:
-          sendData,
       });
     }
 
@@ -667,10 +652,7 @@ export async function POST(
     const now =
       new Date().toISOString();
 
-    const {
-      error:
-        conversationUpdateError,
-    } = await admin
+    await admin
       .from(
         "whatsapp_conversations"
       )
@@ -685,15 +667,6 @@ export async function POST(
         "id",
         conversation.id
       );
-
-    if (
-      conversationUpdateError
-    ) {
-      console.error(
-        "Conversation update error:",
-        conversationUpdateError
-      );
-    }
 
     // =====================================================
     // 13. SUCCESS
@@ -713,9 +686,6 @@ export async function POST(
 
       saved_message:
         savedMessage,
-
-      meta_response:
-        sendData,
     });
   } catch (error) {
     console.error(
