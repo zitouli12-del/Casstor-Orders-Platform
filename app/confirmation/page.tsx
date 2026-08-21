@@ -79,6 +79,8 @@ export default function ConfirmationPage() {
   }>({});
 
   const [isSaving, setIsSaving] = useState(false);
+  const [sendingWhatsAppOrderId, setSendingWhatsAppOrderId] =
+    useState<number | null>(null);
 
   const [toast, setToast] = useState<{
     message: string;
@@ -402,6 +404,60 @@ export default function ConfirmationPage() {
     }
 
     setPendingStatusChange(null);
+  };
+
+  const handleSendWhatsApp = async (orderId: number) => {
+    if (sendingWhatsAppOrderId !== null) {
+      return;
+    }
+
+    setSendingWhatsAppOrderId(orderId);
+    setToast(null);
+
+    try {
+      const response = await fetch("/api/whatsapp/send-message", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          order_id: orderId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message || "Erreur lors de l'envoi WhatsApp."
+        );
+      }
+
+      setToast({
+        message: "Message WhatsApp envoyé avec succès !",
+        type: "success",
+      });
+
+      setTimeout(() => {
+        setToast(null);
+      }, 3000);
+    } catch (error) {
+      console.error("WHATSAPP SEND FAILED =", error);
+
+      setToast({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Erreur lors de l'envoi WhatsApp.",
+        type: "error",
+      });
+
+      setTimeout(() => {
+        setToast(null);
+      }, 4000);
+    } finally {
+      setSendingWhatsAppOrderId(null);
+    }
   };
 
   const handleSave = async () => {
@@ -760,6 +816,8 @@ setTimeout(() => {
             openChangeClientDrawer={
               openChangeClientDrawer
             }
+            onSendWhatsApp={handleSendWhatsApp}
+            sendingWhatsAppOrderId={sendingWhatsAppOrderId}
           />
 
           {ordersWithCompatibleShipments.length >

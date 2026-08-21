@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSupabase } from "@/src/lib/server";
 
 const GRAPH_API_VERSION = "v26.0";
+const TEMPLATE_NAME = "missed_call_confirmation";
+const TEMPLATE_LANGUAGE = "ar";
 
 function normalizeMoroccanPhone(phone: string) {
   let value = phone.replace(/\D/g, "");
@@ -17,8 +19,14 @@ function normalizeMoroccanPhone(phone: string) {
   return value;
 }
 
+function normalizeValue(value: string | null | undefined) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
 export async function POST(request: Request) {
-  console.log("🔥 NEW WHATSAPP ROUTE VERSION 2026-08-12");
+  console.log("🔥 WHATSAPP TEMPLATE ROUTE");
 
   try {
     const supabase = await getServerSupabase();
@@ -48,27 +56,13 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const {
-      order_id,
-      phone,
-      message,
-    } = body;
+    const { order_id } = body;
 
-    if (!phone) {
+    if (!order_id) {
       return NextResponse.json(
         {
           success: false,
-          message: "Numéro de téléphone manquant.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!message || !String(message).trim()) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Message vide.",
+          message: "ID de commande manquant.",
         },
         { status: 400 }
       );
@@ -85,6 +79,8 @@ export async function POST(request: Request) {
       .single();
 
     if (storeError || !store) {
+      console.error("Store error:", storeError);
+
       return NextResponse.json(
         {
           success: false,
@@ -95,17 +91,234 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // 4. WhatsApp connection
+    // 4. Order
     // -----------------------------------------
 
-    const { data: connection, error: connectionError } =
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select(`
+        id,
+        store_id,
+        product,
+        name,
+        phone,
+        color,
+        size
+      `)
+      .eq("id", order_id)
+      .eq("store_id", store.id)
+      .single();
+
+    if (orderError || !order) {
+      console.error("Order error:", orderError);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Commande introuvable.",
+        },
+        { status: 404 }
+      );
+    }
+
+    if (!order.phone) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Numéro de téléphone manquant dans la commande.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!order.name) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Nom du client manquant dans la commande.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!order.product) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Produit manquant dans la commande.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // -----------------------------------------
+    // 5. Stock product
+    // -----------------------------------------
+
+    const { data: stockProduct, error: stockProductError } =
       await supabase
-        .from("whatsapp_connections")
-        .select(
-          "id, store_id, phone_number, phone_number_id, waba_id, access_token"
-        )
+        .from("stock_products")
+        .select("id, name")
         .eq("store_id", store.id)
+        .eq("name", order.product)
         .maybeSingle();
+
+    if (stockProductError) {
+      console.error(
+        "Stock product error:",
+        stockProductError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Impossible de récupérer le produit du stock.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!stockProduct) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Produit introuvable dans le stock pour cette commande.",
+          product: order.product,
+        },
+        { status: 404 }
+      );
+    }
+
+    // -----------------------------------------
+    // 6. Stock variant
+    // -----------------------------------------
+
+    const { data: variants, error: variantsError } = await supabase
+      .from("stock_variants")
+      .select(`
+        id,
+        product_id,
+        color,
+        size,
+        image_url,
+        quantity
+      `)
+      .eq("product_id", stockProduct.id);
+
+    if (variantsError) {
+      console.error(
+        "Stock variants error:",
+        variantsError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Impossible de récupérer les variantes du stock.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!variants || variants.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Aucune variante trouvée pour ce produit dans le stock.",
+        },
+        { status: 404 }
+      );
+    }
+
+    // -----------------------------------------
+    // 7. Find exact variant
+    // -----------------------------------------
+
+    const normalizedOrderColor = normalizeValue(order.color);
+    const normalizedOrderSize = normalizeValue(order.size);
+
+    const variant = variants.find((item) => {
+      const variantColor = normalizeValue(item.color);
+      const variantSize = normalizeValue(item.size);
+
+      return (
+        variantColor === normalizedOrderColor &&
+        variantSize === normalizedOrderSize
+      );
+    });
+
+    if (!variant) {
+      console.error("Variant not found", {
+        order_id: order.id,
+        product: order.product,
+        color: order.color,
+        size: order.size,
+        variants: variants.map((item) => ({
+          id: item.id,
+          color: item.color,
+          size: item.size,
+        })),
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "La variante exacte du produit n'a pas été trouvée dans le stock.",
+          product: order.product,
+          color: order.color,
+          size: order.size,
+        },
+        { status: 404 }
+      );
+    }
+
+    if (!variant.image_url) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Aucune image n'est enregistrée pour cette variante du stock.",
+          variant_id: variant.id,
+        },
+        { status: 400 }
+      );
+    }
+
+    // -----------------------------------------
+    // 8. Normalize phone
+    // -----------------------------------------
+
+    const recipientPhone = normalizeMoroccanPhone(
+      String(order.phone)
+    );
+
+    if (!recipientPhone) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Numéro de téléphone invalide.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // -----------------------------------------
+    // 9. WhatsApp connection
+    // -----------------------------------------
+
+    const {
+      data: connection,
+      error: connectionError,
+    } = await supabase
+      .from("whatsapp_connections")
+      .select(
+        "id, store_id, phone_number, phone_number_id, waba_id, access_token"
+      )
+      .eq("store_id", store.id)
+      .maybeSingle();
 
     if (connectionError) {
       console.error(
@@ -148,43 +361,79 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // 5. Normalize client phone
+    // 10. Logs
     // -----------------------------------------
 
-    const recipientPhone = normalizeMoroccanPhone(
-      String(phone)
-    );
-
-    if (!recipientPhone) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Numéro de téléphone invalide.",
-        },
-        { status: 400 }
-      );
-    }
-
     console.log("======================================");
-    console.log("===== WHATSAPP SEND MESSAGE =====");
-    console.log("Order ID:", order_id);
-    console.log("Phone original:", phone);
+    console.log("===== WHATSAPP TEMPLATE SEND =====");
+    console.log("Order ID:", order.id);
+    console.log("Client:", order.name);
+    console.log("Phone original:", order.phone);
     console.log("Phone normalized:", recipientPhone);
+    console.log("Product:", order.product);
+    console.log("Color:", order.color);
+    console.log("Size:", order.size);
+    console.log("Variant ID:", variant.id);
+    console.log("Image URL:", variant.image_url);
     console.log(
       "Phone Number ID:",
       connection.phone_number_id
     );
-    console.log("WABA ID:", connection.waba_id);
-    console.log("Message:", message);
+    console.log("Template:", TEMPLATE_NAME);
+    console.log("Language:", TEMPLATE_LANGUAGE);
     console.log("======================================");
 
     // -----------------------------------------
-    // 6. Meta WhatsApp API
+    // 11. Meta WhatsApp API
     // -----------------------------------------
 
     const url =
       `https://graph.facebook.com/${GRAPH_API_VERSION}` +
       `/${connection.phone_number_id}/messages`;
+
+    const payload = {
+      messaging_product: "whatsapp",
+
+      to: recipientPhone,
+
+      type: "template",
+
+      template: {
+        name: TEMPLATE_NAME,
+
+        language: {
+          code: TEMPLATE_LANGUAGE,
+        },
+
+        components: [
+          {
+            type: "header",
+
+            parameters: [
+              {
+                type: "image",
+
+                image: {
+                  link: variant.image_url,
+                },
+              },
+            ],
+          },
+
+         {
+  type: "body",
+
+  parameters: [
+    {
+      type: "text",
+      parameter_name: "customer_name",
+      text: String(order.name).trim(),
+    },
+  ],
+},
+        ],
+      },
+    };
 
     const metaResponse = await fetch(url, {
       method: "POST",
@@ -194,23 +443,13 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
       },
 
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-
-        to: recipientPhone,
-
-        type: "text",
-
-        text: {
-          body: String(message).trim(),
-        },
-      }),
+      body: JSON.stringify(payload),
 
       cache: "no-store",
     });
 
     // -----------------------------------------
-    // 8. Read Meta response safely
+    // 12. Read Meta response
     // -----------------------------------------
 
     const responseText = await metaResponse.text();
@@ -236,7 +475,7 @@ export async function POST(request: Request) {
     console.log("=========================");
 
     // -----------------------------------------
-    // 9. Meta error
+    // 13. Meta error
     // -----------------------------------------
 
     if (!metaResponse.ok) {
@@ -245,16 +484,17 @@ export async function POST(request: Request) {
           success: false,
 
           message:
-            "Meta a refusé l'envoi du message.",
+            "Meta a refusé l'envoi du template WhatsApp.",
 
           meta_status: metaResponse.status,
 
           meta_response: metaData,
 
-          phone_number_id:
-            connection.phone_number_id,
+          order_id: order.id,
 
           recipient: recipientPhone,
+
+          template: TEMPLATE_NAME,
         },
         {
           status: 400,
@@ -263,27 +503,38 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // 10. Success
+    // 14. Success
     // -----------------------------------------
 
     return NextResponse.json({
       success: true,
 
       message:
-        "Message WhatsApp envoyé avec succès.",
+        "Template WhatsApp envoyé avec succès.",
 
-      order_id: order_id ?? null,
+      order_id: order.id,
 
       recipient: recipientPhone,
 
-      phone_number_id:
-        connection.phone_number_id,
+      customer_name: order.name,
+
+      product: order.product,
+
+      color: order.color,
+
+      size: order.size,
+
+      variant_id: variant.id,
+
+      image_url: variant.image_url,
+
+      template: TEMPLATE_NAME,
 
       meta_response: metaData,
     });
   } catch (error) {
     console.error(
-      "Erreur envoi WhatsApp:",
+      "Erreur envoi WhatsApp template:",
       error
     );
 

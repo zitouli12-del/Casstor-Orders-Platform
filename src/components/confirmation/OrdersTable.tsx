@@ -16,7 +16,6 @@ import { analyzeClientShippingHistory } from "@/src/services/tracking/analyzeCli
 import { BlacklistEntry } from "@/src/services/blacklist/getBlacklistEntryByPhone";
 import { findBlacklistEntryByPhone } from "@/src/services/blacklist/findBlacklistEntryByPhone";
 import { useState } from "react";
-import WhatsAppChatDrawer from "./WhatsAppChatDrawer";
 
 interface OrdersTableProps {
   filteredOrders: OrderWithCompatibleShipments[];
@@ -33,6 +32,8 @@ interface OrdersTableProps {
   openChangeClientDrawer: (
     order: OrderWithCompatibleShipments
   ) => void;
+  onSendWhatsApp: (orderId: number) => void;
+  sendingWhatsAppOrderId: number | null;
 }
 
 const ORDER_STATUSES = [
@@ -144,9 +145,9 @@ export default function OrdersTable({
   openModal,
   getStatusColor,
   openChangeClientDrawer,
+  onSendWhatsApp,
+  sendingWhatsAppOrderId,
 }: OrdersTableProps) {
-    const [whatsappOrder, setWhatsappOrder] =
-    useState<OrderWithCompatibleShipments | null>(null);
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
@@ -426,13 +427,30 @@ export default function OrdersTable({
                           <Edit size={20} strokeWidth={2.2} />
                         </button>
                         <button
-  type="button"
-  onClick={() => setWhatsappOrder(order)}
-  className="flex h-9 w-9 items-center justify-center rounded-lg text-green-600 transition hover:bg-green-100"
-  title="Ouvrir WhatsApp"
->
-  <MessageCircle size={20} strokeWidth={2.2} />
-</button>
+                          type="button"
+                          onClick={() => onSendWhatsApp(order.id)}
+                          disabled={sendingWhatsAppOrderId === order.id}
+                          className={`flex h-9 w-9 items-center justify-center rounded-lg text-green-600 transition hover:bg-green-100 ${
+                            sendingWhatsAppOrderId === order.id
+                              ? "cursor-wait opacity-50"
+                              : ""
+                          }`}
+                          title={
+                            sendingWhatsAppOrderId === order.id
+                              ? "Envoi en cours..."
+                              : "Envoyer WhatsApp"
+                          }
+                        >
+                          <MessageCircle
+                            size={20}
+                            strokeWidth={2.2}
+                            className={
+                              sendingWhatsAppOrderId === order.id
+                                ? "animate-pulse"
+                                : ""
+                            }
+                          />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -442,12 +460,6 @@ export default function OrdersTable({
           </tbody>
         </table>
       </div>
-
-      <WhatsAppChatDrawer
-        order={whatsappOrder}
-        open={whatsappOrder !== null}
-        onClose={() => setWhatsappOrder(null)}
-      />
     </div>
   );
 }
