@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import {
   MessageCircle,
   Search,
@@ -22,6 +28,7 @@ interface Conversation {
 interface WhatsAppMessage {
   id: number;
   conversation_id: number;
+  whatsapp_message_id?: string | null;
 
   direction:
     | "incoming"
@@ -44,12 +51,15 @@ type RecorderState =
   | "preview";
 
 export default function WhatsAppPage() {
+  // =====================================================
+  // BASIC STATE
+  // =====================================================
+
   const [conversations, setConversations] =
     useState<Conversation[]>([]);
 
-  const [messages, setMessages] = useState<
-    WhatsAppMessage[]
-  >([]);
+  const [messages, setMessages] =
+    useState<WhatsAppMessage[]>([]);
 
   const [
     selectedConversationId,
@@ -69,7 +79,7 @@ export default function WhatsAppPage() {
     useState(false);
 
   // =====================================================
-  // IMAGE
+  // IMAGE STATE
   // =====================================================
 
   const [selectedImage, setSelectedImage] =
@@ -78,21 +88,37 @@ export default function WhatsAppPage() {
   const [imageCaption, setImageCaption] =
     useState("");
 
+  const [
+    imagePreviewUrl,
+    setImagePreviewUrl,
+  ] = useState<string | null>(null);
+
   // =====================================================
-  // AUDIO RECORDING
+  // AUDIO RECORDING STATE
   // =====================================================
 
   const [recorderState, setRecorderState] =
     useState<RecorderState>("idle");
 
-  const [recordingSeconds, setRecordingSeconds] =
-    useState(0);
+  const [
+    convertingAudio,
+    setConvertingAudio,
+  ] = useState(false);
 
-  const [recordedAudio, setRecordedAudio] =
-    useState<File | null>(null);
+  const [
+    recordingSeconds,
+    setRecordingSeconds,
+  ] = useState(0);
 
-  const [audioPreviewUrl, setAudioPreviewUrl] =
-    useState<string | null>(null);
+  const [
+    recordedAudio,
+    setRecordedAudio,
+  ] = useState<File | null>(null);
+
+  const [
+    audioPreviewUrl,
+    setAudioPreviewUrl,
+  ] = useState<string | null>(null);
 
   const mediaRecorderRef =
     useRef<MediaRecorder | null>(null);
@@ -148,7 +174,8 @@ export default function WhatsAppPage() {
       setSelectedConversationId(
         (current) =>
           current ??
-          result.conversations?.[0]
+          result
+            .conversations?.[0]
             ?.id ??
           null
       );
@@ -167,36 +194,36 @@ export default function WhatsAppPage() {
   }, []);
 
   // =====================================================
-  // CLEANUP AUDIO PREVIEW
+  // SELECTED CONVERSATION
   // =====================================================
 
-  useEffect(() => {
-    return () => {
-      if (
-        audioPreviewUrl
-      ) {
-        URL.revokeObjectURL(
-          audioPreviewUrl
-        );
-      }
+  const selectedConversation =
+    useMemo(
+      () =>
+        conversations.find(
+          (conversation) =>
+            conversation.id ===
+            selectedConversationId
+        ) || null,
+      [
+        conversations,
+        selectedConversationId,
+      ]
+    );
 
-      if (
-        recordingTimerRef.current
-      ) {
-        clearInterval(
-          recordingTimerRef.current
-        );
-      }
-
-      mediaStreamRef.current
-        ?.getTracks()
-        .forEach((track) =>
-          track.stop()
-        );
-    };
-  }, [
-    audioPreviewUrl,
-  ]);
+  const selectedMessages =
+    useMemo(
+      () =>
+        messages.filter(
+          (message) =>
+            message.conversation_id ===
+            selectedConversationId
+        ),
+      [
+        messages,
+        selectedConversationId,
+      ]
+    );
 
   // =====================================================
   // FILTER CONVERSATIONS
@@ -205,7 +232,9 @@ export default function WhatsAppPage() {
   const filteredConversations =
     useMemo(() => {
       const value =
-        search.trim().toLowerCase();
+        search
+          .trim()
+          .toLowerCase();
 
       if (!value) {
         return conversations;
@@ -228,24 +257,16 @@ export default function WhatsAppPage() {
       search,
     ]);
 
-  const selectedConversation =
-    conversations.find(
-      (conversation) =>
-        conversation.id ===
-        selectedConversationId
-    ) || null;
-
-  const selectedMessages =
-    messages.filter(
-      (message) =>
-        message.conversation_id ===
-        selectedConversationId
-    );
+  // =====================================================
+  // FORMAT TIME
+  // =====================================================
 
   function formatTime(
     value: string | null
   ) {
-    if (!value) return "";
+    if (!value) {
+      return "";
+    }
 
     return new Date(
       value
@@ -279,6 +300,66 @@ export default function WhatsAppPage() {
       "0"
     )}`;
   }
+
+  // =====================================================
+  // IMAGE PREVIEW
+  // =====================================================
+
+  useEffect(() => {
+    if (!selectedImage) {
+      setImagePreviewUrl(
+        null
+      );
+      return;
+    }
+
+    const url =
+      URL.createObjectURL(
+        selectedImage
+      );
+
+    setImagePreviewUrl(
+      url
+    );
+
+    return () => {
+      URL.revokeObjectURL(
+        url
+      );
+    };
+  }, [
+    selectedImage,
+  ]);
+
+  // =====================================================
+  // AUDIO PREVIEW CLEANUP
+  // =====================================================
+
+  useEffect(() => {
+    return () => {
+      if (audioPreviewUrl) {
+        URL.revokeObjectURL(
+          audioPreviewUrl
+        );
+      }
+
+      if (
+        recordingTimerRef.current
+      ) {
+        clearInterval(
+          recordingTimerRef.current
+        );
+      }
+
+      mediaStreamRef.current
+        ?.getTracks()
+        .forEach((track) =>
+          track.stop()
+        );
+    };
+  }, [
+    audioPreviewUrl,
+  ]);
 
   // =====================================================
   // SEND TEXT
@@ -430,6 +511,32 @@ export default function WhatsAppPage() {
   }
 
   // =====================================================
+  // STOP MICROPHONE TRACKS
+  // =====================================================
+
+  function stopMediaTracks() {
+    mediaStreamRef.current
+      ?.getTracks()
+      .forEach((track) =>
+        track.stop()
+      );
+
+    mediaStreamRef.current =
+      null;
+
+    if (
+      recordingTimerRef.current
+    ) {
+      clearInterval(
+        recordingTimerRef.current
+      );
+
+      recordingTimerRef.current =
+        null;
+    }
+  }
+
+  // =====================================================
   // START AUDIO RECORDING
   // =====================================================
 
@@ -437,7 +544,8 @@ export default function WhatsAppPage() {
     if (
       sending ||
       recorderState ===
-        "recording"
+        "recording" ||
+      convertingAudio
     ) {
       return;
     }
@@ -470,18 +578,30 @@ export default function WhatsAppPage() {
         0
       );
 
-      setRecorderState(
-        "recording"
+      setRecordedAudio(
+        null
+      );
+
+      if (audioPreviewUrl) {
+        URL.revokeObjectURL(
+          audioPreviewUrl
+        );
+      }
+
+      setAudioPreviewUrl(
+        null
       );
 
       let mimeType = "";
 
-      const mimeTypes = [
+      const supportedTypes = [
         "audio/webm;codecs=opus",
         "audio/webm",
       ];
 
-      for (const type of mimeTypes) {
+      for (
+        const type of supportedTypes
+      ) {
         if (
           MediaRecorder.isTypeSupported(
             type
@@ -528,8 +648,18 @@ export default function WhatsAppPage() {
 
           stopMediaTracks();
 
+          mediaRecorderRef.current =
+            null;
+
+          audioChunksRef.current =
+            [];
+
           setRecorderState(
             "idle"
+          );
+
+          setConvertingAudio(
+            false
           );
 
           setRecordingSeconds(
@@ -543,11 +673,21 @@ export default function WhatsAppPage() {
 
       recorder.onstop =
         async () => {
+          setConvertingAudio(
+            true
+          );
+
+          setRecorderState(
+            "idle"
+          );
+
           try {
             const chunks =
               audioChunksRef.current;
 
-            if (!chunks.length) {
+            if (
+              chunks.length === 0
+            ) {
               throw new Error(
                 "Aucun audio enregistré."
               );
@@ -574,10 +714,6 @@ export default function WhatsAppPage() {
                 recordedBlob
               );
 
-            setRecordedAudio(
-              mp3File
-            );
-
             if (
               audioPreviewUrl
             ) {
@@ -591,6 +727,10 @@ export default function WhatsAppPage() {
                 mp3File
               );
 
+            setRecordedAudio(
+              mp3File
+            );
+
             setAudioPreviewUrl(
               previewUrl
             );
@@ -602,6 +742,14 @@ export default function WhatsAppPage() {
             console.error(
               "Audio conversion error:",
               error
+            );
+
+            setRecordedAudio(
+              null
+            );
+
+            setAudioPreviewUrl(
+              null
             );
 
             setRecorderState(
@@ -621,8 +769,16 @@ export default function WhatsAppPage() {
 
             audioChunksRef.current =
               [];
+
+            setConvertingAudio(
+              false
+            );
           }
         };
+
+      setRecorderState(
+        "recording"
+      );
 
       recorder.start();
 
@@ -639,6 +795,8 @@ export default function WhatsAppPage() {
         error
       );
 
+      stopMediaTracks();
+
       alert(
         error instanceof DOMException &&
           error.name ===
@@ -651,30 +809,8 @@ export default function WhatsAppPage() {
     }
   }
 
-  function stopMediaTracks() {
-    mediaStreamRef.current
-      ?.getTracks()
-      .forEach((track) =>
-        track.stop()
-      );
-
-    mediaStreamRef.current =
-      null;
-
-    if (
-      recordingTimerRef.current
-    ) {
-      clearInterval(
-        recordingTimerRef.current
-      );
-
-      recordingTimerRef.current =
-        null;
-    }
-  }
-
   // =====================================================
-  // STOP RECORDING
+  // STOP AUDIO RECORDING
   // =====================================================
 
   function stopAudioRecording() {
@@ -697,12 +833,19 @@ export default function WhatsAppPage() {
   // =====================================================
 
   function cancelRecordedAudio() {
+    const recorder =
+      mediaRecorderRef.current;
+
     if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !==
+      recorder &&
+      recorder.state !==
         "inactive"
     ) {
-      mediaRecorderRef.current.stop();
+      try {
+        recorder.stop();
+      } catch {
+        // ignore
+      }
     }
 
     stopMediaTracks();
@@ -713,8 +856,6 @@ export default function WhatsAppPage() {
     audioChunksRef.current =
       [];
 
-    setRecordedAudio(null);
-
     if (
       audioPreviewUrl
     ) {
@@ -723,10 +864,20 @@ export default function WhatsAppPage() {
       );
     }
 
-    setAudioPreviewUrl(null);
+    setRecordedAudio(
+      null
+    );
+
+    setAudioPreviewUrl(
+      null
+    );
 
     setRecordingSeconds(
       0
+    );
+
+    setConvertingAudio(
+      false
     );
 
     setRecorderState(
@@ -742,7 +893,8 @@ export default function WhatsAppPage() {
     if (
       !selectedConversation ||
       !recordedAudio ||
-      sending
+      sending ||
+      convertingAudio
     ) {
       return;
     }
@@ -830,14 +982,16 @@ export default function WhatsAppPage() {
   }
 
   // =====================================================
-  // CONVERT WEBM → MP3
+  // WEBM → MP3
   // =====================================================
 
   async function convertBlobToMp3(
     blob: Blob
   ): Promise<File> {
     const lamejs =
-      await import("lamejs");
+      await import(
+        "lamejs"
+      );
 
     const arrayBuffer =
       await blob.arrayBuffer();
@@ -865,11 +1019,14 @@ export default function WhatsAppPage() {
           arrayBuffer.slice(0)
         );
 
-      const channelCount =
-        Math.min(
-          audioBuffer.numberOfChannels,
-          1
+      if (
+        audioBuffer.length ===
+        0
+      ) {
+        throw new Error(
+          "L'enregistrement audio est vide."
         );
+      }
 
       const sampleRate =
         audioBuffer.sampleRate;
@@ -879,9 +1036,9 @@ export default function WhatsAppPage() {
           0
         );
 
-      const mp3encoder =
+      const mp3Encoder =
         new lamejs.Mp3Encoder(
-          channelCount,
+          1,
           sampleRate,
           128
         );
@@ -889,7 +1046,7 @@ export default function WhatsAppPage() {
       const sampleBlockSize =
         1152;
 
-      const mp3Data: BlobPart[] =
+      const mp3Data: ArrayBuffer[] =
         [];
 
       const left =
@@ -918,7 +1075,9 @@ export default function WhatsAppPage() {
               -1,
               Math.min(
                 1,
-                samples[i + j]
+                samples[
+                  i + j
+                ]
               )
             );
 
@@ -928,8 +1087,8 @@ export default function WhatsAppPage() {
               : sample * 0x7fff;
         }
 
-        const mp3buf =
-          mp3encoder.encodeBuffer(
+        const mp3Buffer =
+          mp3Encoder.encodeBuffer(
             left.subarray(
               0,
               sampleCount
@@ -937,18 +1096,18 @@ export default function WhatsAppPage() {
           );
 
         if (
-          mp3buf.length > 0
+          mp3Buffer.length > 0
         ) {
           mp3Data.push(
             new Int8Array(
-              mp3buf
+              mp3Buffer
             ).buffer
           );
         }
       }
 
       const end =
-        mp3encoder.flush();
+        mp3Encoder.flush();
 
       if (
         end.length > 0
@@ -957,6 +1116,14 @@ export default function WhatsAppPage() {
           new Int8Array(
             end
           ).buffer
+        );
+      }
+
+      if (
+        mp3Data.length === 0
+      ) {
+        throw new Error(
+          "Impossible de créer le fichier MP3."
         );
       }
 
@@ -970,9 +1137,7 @@ export default function WhatsAppPage() {
         );
 
       return new File(
-        [
-          mp3Blob,
-        ],
+        [mp3Blob],
         "casstor-voice.mp3",
         {
           type:
@@ -1154,7 +1319,7 @@ export default function WhatsAppPage() {
 
                         <p className="truncate text-xs text-slate-500">
                           {lastMessage?.body ||
-                            "Aucune message"}
+                            "Aucun message"}
                         </p>
 
                         {conversation.unread_count >
@@ -1285,6 +1450,7 @@ export default function WhatsAppPage() {
                           {message.message_type ===
                             "image" &&
                           message.media_id ? (
+
                             <div className="space-y-2">
 
                               <img
@@ -1409,13 +1575,15 @@ export default function WhatsAppPage() {
               {selectedImage && (
                 <div className="mb-3 flex items-center gap-3 rounded-xl border bg-slate-50 p-3">
 
-                  <img
-                    src={URL.createObjectURL(
-                      selectedImage
-                    )}
-                    alt="Preview"
-                    className="h-20 w-20 rounded-lg object-cover"
-                  />
+                  {imagePreviewUrl && (
+                    <img
+                      src={
+                        imagePreviewUrl
+                      }
+                      alt="Preview"
+                      className="h-20 w-20 rounded-lg object-cover"
+                    />
+                  )}
 
                   <div className="min-w-0 flex-1">
 
@@ -1453,6 +1621,9 @@ export default function WhatsAppPage() {
                         ""
                       );
                     }}
+                    disabled={
+                      sending
+                    }
                     className="text-xs font-medium text-red-500"
                   >
                     Supprimer
@@ -1492,13 +1663,35 @@ export default function WhatsAppPage() {
                     onClick={
                       stopAudioRecording
                     }
-                    className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-600 text-white"
+                    className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
                   >
                     <Square
-                      size={16}
+                      size={15}
                       fill="currentColor"
                     />
+
+                    Arrêter
                   </button>
+
+                </div>
+              )}
+
+              {/* AUDIO CONVERSION */}
+
+              {convertingAudio && (
+                <div className="mb-3 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      Préparation de l'audio...
+                    </p>
+
+                    <p className="text-xs text-slate-500">
+                      Votre enregistrement est en cours de préparation.
+                    </p>
+                  </div>
 
                 </div>
               )}
@@ -1509,219 +1702,224 @@ export default function WhatsAppPage() {
                 "preview" &&
                 recordedAudio &&
                 audioPreviewUrl && (
-                  <div className="mb-3 rounded-xl border bg-slate-50 p-3">
+                <div className="mb-3 rounded-xl border bg-slate-50 p-3">
 
-                    <div className="mb-3 flex items-center justify-between">
+                  <div className="mb-3 flex items-center justify-between">
 
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">
-                          Audio prêt
-                        </p>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">
+                        Audio prêt
+                      </p>
 
-                        <p className="text-xs text-slate-500">
-                          {
-                            formatRecordingTime(
-                              recordingSeconds
-                            )
-                          }
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={
-                          cancelRecordedAudio
+                      <p className="text-xs text-slate-500">
+                        {
+                          formatRecordingTime(
+                            recordingSeconds
+                          )
                         }
-                        className="text-slate-500 hover:text-red-500"
-                      >
-                        <X
-                          size={18}
-                        />
-                      </button>
-
+                      </p>
                     </div>
-
-                    <audio
-                      controls
-                      src={
-                        audioPreviewUrl
-                      }
-                      className="w-full"
-                    />
-
-                    <div className="mt-3 flex justify-end">
-
-                      <button
-                        type="button"
-                        onClick={
-                          handleSendRecordedAudio
-                        }
-                        disabled={
-                          sending
-                        }
-                        className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                      >
-                        <Send
-                          size={15}
-                        />
-
-                        {sending
-                          ? "Envoi..."
-                          : "Envoyer"}
-                      </button>
-
-                    </div>
-
-                  </div>
-                )}
-
-              {/* COMPOSER ROW */}
-
-              {recorderState !==
-                "recording" &&
-                recorderState !==
-                  "preview" && (
-                  <div className="flex items-center gap-2">
-
-                    {/* MICROPHONE */}
 
                     <button
                       type="button"
                       onClick={
-                        startAudioRecording
+                        cancelRecordedAudio
                       }
                       disabled={
-                        sending ||
-                        !!selectedImage
+                        sending
                       }
-                      title="Enregistrer un audio"
-                      className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white hover:text-red-500"
                     >
-                      <Mic
-                        size={18}
-                      />
+                      <X size={18} />
                     </button>
 
-                    {/* IMAGE */}
+                  </div>
 
-                    <label className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50">
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={
+                      audioPreviewUrl
+                    }
+                    className="w-full"
+                  />
 
-                      📎
+                  <div className="mt-3 flex items-center justify-end gap-2">
 
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png"
-                        className="hidden"
-                        disabled={
-                          sending
-                        }
-                        onChange={(
-                          event
-                        ) => {
-                          const file =
-                            event.target.files?.[0];
+                    <button
+                      type="button"
+                      onClick={
+                        cancelRecordedAudio
+                      }
+                      disabled={
+                        sending
+                      }
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      Annuler
+                    </button>
 
-                          if (!file)
-                            return;
+                    <button
+                      type="button"
+                      onClick={
+                        handleSendRecordedAudio
+                      }
+                      disabled={
+                        sending
+                      }
+                      className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Send size={15} />
 
-                          setSelectedImage(
-                            file
-                          );
+                      {sending
+                        ? "Envoi..."
+                        : "Envoyer"}
+                    </button>
 
-                          event.currentTarget.value =
-                            "";
-                        }}
-                      />
+                  </div>
 
-                    </label>
+                </div>
+              )}
 
-                    {/* TEXT */}
+              {/* NORMAL COMPOSER */}
+
+              {recorderState !==
+                "recording" &&
+                recorderState !==
+                  "preview" &&
+                !convertingAudio && (
+                <div className="flex items-center gap-2">
+
+                  {/* MIC */}
+
+                  <button
+                    type="button"
+                    onClick={
+                      startAudioRecording
+                    }
+                    disabled={
+                      sending ||
+                      !!selectedImage
+                    }
+                    title="Enregistrer un audio"
+                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Mic size={18} />
+                  </button>
+
+                  {/* IMAGE */}
+
+                  <label className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50">
+
+                    📎
 
                     <input
-                      value={
-                        newMessage
+                      type="file"
+                      accept="image/jpeg,image/png"
+                      className="hidden"
+                      disabled={
+                        sending
                       }
                       onChange={(
                         event
-                      ) =>
-                        setNewMessage(
-                          event.target.value
-                        )
+                      ) => {
+                        const file =
+                          event.target.files?.[0];
+
+                        if (!file) {
+                          return;
+                        }
+
+                        setSelectedImage(
+                          file
+                        );
+
+                        event.currentTarget.value =
+                          "";
+                      }}
+                    />
+
+                  </label>
+
+                  {/* TEXT */}
+
+                  <input
+                    value={
+                      newMessage
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setNewMessage(
+                        event.target.value
+                      )
+                    }
+                    onKeyDown={
+                      handleKeyDown
+                    }
+                    disabled={
+                      sending ||
+                      !!selectedImage
+                    }
+                    placeholder={
+                      selectedImage
+                        ? "Image sélectionnée..."
+                        : "Écrire un message..."
+                    }
+                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+
+                  {/* SEND */}
+
+                  {selectedImage ? (
+                    <button
+                      type="button"
+                      onClick={
+                        handleSendImage
                       }
-                      onKeyDown={
-                        handleKeyDown
+                      disabled={
+                        sending
+                      }
+                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Send size={18} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={
+                        handleSendMessage
                       }
                       disabled={
                         sending ||
-                        !!selectedImage
+                        !newMessage.trim()
                       }
-                      placeholder={
-                        selectedImage
-                          ? "Image sélectionnée..."
-                          : "Écrire un message..."
-                      }
-                      className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
-                    />
+                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Send size={18} />
+                    </button>
+                  )}
 
-                    {/* SEND */}
-
-                    {selectedImage ? (
-
-                      <button
-                        type="button"
-                        onClick={
-                          handleSendImage
-                        }
-                        disabled={
-                          sending
-                        }
-                        className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Send
-                          size={18}
-                        />
-                      </button>
-
-                    ) : (
-
-                      <button
-                        type="button"
-                        onClick={
-                          handleSendMessage
-                        }
-                        disabled={
-                          sending ||
-                          !newMessage.trim()
-                        }
-                        className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Send
-                          size={18}
-                        />
-                      </button>
-
-                    )}
-
-                  </div>
-                )}
+                </div>
+              )}
 
               <p className="mt-2 text-[11px] text-slate-400">
                 {recorderState ===
                 "recording"
-                  ? "تكلم دابا، ومن بعد ضغط Stop."
+                  ? "تكلم دابا ثم اضغط «Arrêter»."
+                  : convertingAudio
+                  ? "Préparation de l'audio..."
                   : recorderState ===
                     "preview"
-                  ? "سمع التسجيل قبل الإرسال."
+                  ? "سمع التسجيل قبل ما ترسلو."
                   : "🎤 تسجيل الصوت · 📎 إرسال صورة · Enter لإرسال النص"}
               </p>
 
             </div>
-
           </>
         )}
 
       </section>
-
     </div>
   );
 }
