@@ -8,31 +8,39 @@ type WhatsAppMessage = {
   from: string;
   timestamp?: string;
   type: string;
+
   text?: {
     body?: string;
   };
+
   image?: {
     caption?: string;
   };
+
   video?: {
     caption?: string;
   };
+
   document?: {
     caption?: string;
     filename?: string;
   };
+
   audio?: {
     id?: string;
   };
+
   sticker?: {
     id?: string;
   };
+
   location?: {
     latitude?: number;
     longitude?: number;
     name?: string;
     address?: string;
   };
+
   contacts?: unknown[];
 };
 
@@ -41,10 +49,12 @@ type WhatsAppStatus = {
   status: "sent" | "delivered" | "read" | "failed";
   timestamp?: string;
   recipient_id?: string;
+
   errors?: Array<{
     code?: number;
     title?: string;
     message?: string;
+
     error_data?: {
       details?: string;
     };
@@ -66,11 +76,15 @@ function getMessageBody(message: WhatsAppMessage): string | null {
       return "[Audio]";
 
     case "document":
-      return message.document?.caption
-        ? message.document.caption
-        : message.document?.filename
-          ? `[Document] ${message.document.filename}`
-          : "[Document]";
+      if (message.document?.caption) {
+        return message.document.caption;
+      }
+
+      if (message.document?.filename) {
+        return `[Document] ${message.document.filename}`;
+      }
+
+      return "[Document]";
 
     case "sticker":
       return "[Sticker]";
@@ -83,8 +97,6 @@ function getMessageBody(message: WhatsAppMessage): string | null {
         if (name || address) {
           return `[Location] ${name} ${address}`.trim();
         }
-
-        return "[Location]";
       }
 
       return "[Location]";
@@ -111,7 +123,11 @@ function getMessageCreatedAt(timestamp?: string) {
   return new Date(timestampNumber * 1000).toISOString();
 }
 
-// GET = Meta تستعمله للتحقق من الـ Webhook
+// ============================================================
+// GET
+// Meta تستعمل GET باش تتحقق من Webhook
+// ============================================================
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
 
@@ -141,29 +157,48 @@ export async function GET(request: NextRequest) {
       success: false,
       message: "Invalid verify token",
     },
-    { status: 403 }
+    {
+      status: 403,
+    }
   );
 }
 
-// POST = Meta غادي تبعث هنا messages/status updates
+// ============================================================
+// POST
+// Meta تبعث هنا messages + status updates
+// ============================================================
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
     console.log("===== WHATSAPP WEBHOOK RECEIVED =====");
+    console.log(JSON.stringify(body, null, 2));
 
     const supabase = await getServerSupabase();
+
+    // ========================================================
+    // 1. CHECK OBJECT
+    // ========================================================
 
     if (body?.object !== "whatsapp_business_account") {
       console.warn("Ignoring non-WhatsApp webhook");
 
       return NextResponse.json(
-        { success: true },
-        { status: 200 }
+        {
+          success: true,
+        },
+        {
+          status: 200,
+        }
       );
     }
 
     const entries = Array.isArray(body.entry) ? body.entry : [];
+
+    // ========================================================
+    // 2. LOOP ENTRIES
+    // ========================================================
 
     for (const entry of entries) {
       const changes = Array.isArray(entry?.changes)
@@ -182,13 +217,13 @@ export async function POST(request: NextRequest) {
         }
 
         const metadata = value.metadata;
-
         const phoneNumberId = metadata?.phone_number_id;
 
         if (!phoneNumberId) {
           console.error(
             "WhatsApp webhook: phone_number_id missing"
           );
+
           continue;
         }
 
@@ -197,17 +232,21 @@ export async function POST(request: NextRequest) {
           phoneNumberId
         );
 
-        // =====================================================
-        // 1. FIND WHATSAPP CONNECTION
-        // =====================================================
+        // ====================================================
+        // 3. FIND WHATSAPP CONNECTION
+        // ====================================================
 
-        const { data: connection, error: connectionError } =
-          await supabase
-            .from("whatsapp_connections")
-            .select("id, store_id, phone_number, phone_number_id")
-            .eq("phone_number_id", phoneNumberId)
-            .eq("is_active", true)
-            .maybeSingle();
+        const {
+          data: connection,
+          error: connectionError,
+        } = await supabase
+          .from("whatsapp_connections")
+          .select(
+            "id, store_id, phone_number, phone_number_id"
+          )
+          .eq("phone_number_id", phoneNumberId)
+          .eq("is_active", true)
+          .maybeSingle();
 
         if (connectionError) {
           console.error(
@@ -229,15 +268,19 @@ export async function POST(request: NextRequest) {
 
         const storeId = connection.store_id;
 
-        // =====================================================
-        // 2. INCOMING MESSAGES
-        // =====================================================
+        console.log(
+          "WhatsApp Store ID:",
+          storeId
+        );
 
-        const messages: WhatsAppMessage[] = Array.isArray(
-          value.messages
-        )
-          ? value.messages
-          : [];
+        // ====================================================
+        // 4. INCOMING MESSAGES
+        // ====================================================
+
+        const messages: WhatsAppMessage[] =
+          Array.isArray(value.messages)
+            ? value.messages
+            : [];
 
         const contacts = Array.isArray(value.contacts)
           ? value.contacts
@@ -250,9 +293,9 @@ export async function POST(request: NextRequest) {
 
           const phone = message.from;
 
-          // ---------------------------------------------------
+          // --------------------------------------------------
           // Customer name
-          // ---------------------------------------------------
+          // --------------------------------------------------
 
           let customerName: string | null = null;
 
@@ -269,128 +312,34 @@ export async function POST(request: NextRequest) {
             message.timestamp
           );
 
-          const messageBody = getMessageBody(message);
+          const messageBody =
+            getMessageBody(message);
 
-          console.log("===== INCOMING WHATSAPP MESSAGE =====");
+          console.log(
+            "===== INCOMING WHATSAPP MESSAGE ====="
+          );
+
           console.log("Store ID:", storeId);
           console.log("Phone:", phone);
           console.log("Message ID:", message.id);
           console.log("Type:", message.type);
+          console.log("Body:", messageBody);
 
-          // ===================================================
-          // 3. FIND EXISTING CONVERSATION
-          // ===================================================
+          // ==================================================
+          // 5. CHECK DUPLICATE FIRST
+          // ==================================================
 
-          let conversation = null;
-
-          const { data: existingConversation, error: conversationFindError } =
-            await supabase
-              .from("whatsapp_conversations")
-              .select(
-                "id, store_id, order_id, phone, customer_name, unread_count"
-              )
-              .eq("store_id", storeId)
-              .eq("phone", phone)
-              .maybeSingle();
-
-          if (conversationFindError) {
-            console.error(
-              "Conversation lookup error:",
-              conversationFindError
-            );
-
-            continue;
-          }
-
-          conversation = existingConversation;
-
-          // ===================================================
-          // 4. CREATE CONVERSATION IF NOT EXISTS
-          // ===================================================
-
-          if (!conversation) {
-            const { data: newConversation, error: createError } =
-              await supabase
-                .from("whatsapp_conversations")
-                .insert({
-                  store_id: storeId,
-                  phone,
-                  customer_name: customerName,
-                  last_message_at: createdAt,
-                  unread_count: 1,
-                  created_at: createdAt,
-                  updated_at: new Date().toISOString(),
-                })
-                .select(
-                  "id, store_id, order_id, phone, customer_name, unread_count"
-                )
-                .single();
-
-            if (createError) {
-              console.error(
-                "Conversation creation error:",
-                createError
-              );
-
-              continue;
-            }
-
-            conversation = newConversation;
-
-            console.log(
-              "New WhatsApp conversation created:",
-              conversation.id
-            );
-          } else {
-            // =================================================
-            // 5. UPDATE EXISTING CONVERSATION
-            // =================================================
-
-            const currentUnread =
-              Number(conversation.unread_count || 0);
-
-            const updateData: Record<string, any> = {
-              last_message_at: createdAt,
-              unread_count: currentUnread + 1,
-              updated_at: new Date().toISOString(),
-            };
-
-            if (
-              customerName &&
-              !conversation.customer_name
-            ) {
-              updateData.customer_name = customerName;
-            }
-
-            const { error: updateConversationError } =
-              await supabase
-                .from("whatsapp_conversations")
-                .update(updateData)
-                .eq("id", conversation.id);
-
-            if (updateConversationError) {
-              console.error(
-                "Conversation update error:",
-                updateConversationError
-              );
-
-              continue;
-            }
-          }
-
-          // ===================================================
-          // 6. PREVENT DUPLICATE MESSAGE
-          // ===================================================
-
-          const { data: existingMessage, error: messageFindError } =
-            await supabase
-              .from("whatsapp_messages")
-              .select("id")
-              .eq(
-                "whatsapp_message_id",
-                message.id
-              )
-              .maybeSingle();
+          const {
+            data: existingMessage,
+            error: messageFindError,
+          } = await supabase
+            .from("whatsapp_messages")
+            .select("id")
+            .eq(
+              "whatsapp_message_id",
+              message.id
+            )
+            .maybeSingle();
 
           if (messageFindError) {
             console.error(
@@ -403,30 +352,149 @@ export async function POST(request: NextRequest) {
 
           if (existingMessage) {
             console.log(
-              "Message already exists:",
+              "Message already exists. Ignoring duplicate:",
               message.id
             );
 
             continue;
           }
 
-          // ===================================================
-          // 7. SAVE MESSAGE
-          // ===================================================
+          // ==================================================
+          // 6. FIND EXISTING CONVERSATION
+          // ==================================================
 
-          const { error: insertMessageError } =
-            await supabase
-              .from("whatsapp_messages")
+          const {
+            data: existingConversation,
+            error: conversationFindError,
+          } = await supabase
+            .from("whatsapp_conversations")
+            .select(
+              "id, store_id, order_id, phone, customer_name, unread_count"
+            )
+            .eq("store_id", storeId)
+            .eq("phone", phone)
+            .maybeSingle();
+
+          if (conversationFindError) {
+            console.error(
+              "Conversation lookup error:",
+              conversationFindError
+            );
+
+            continue;
+          }
+
+          let conversationId: number;
+          let currentUnread = 0;
+
+          // ==================================================
+          // 7. CREATE CONVERSATION IF NOT EXISTS
+          // ==================================================
+
+          if (!existingConversation) {
+            console.log(
+              "Creating new WhatsApp conversation..."
+            );
+
+            const {
+              data: newConversation,
+              error: createError,
+            } = await supabase
+              .from("whatsapp_conversations")
               .insert({
-                conversation_id: conversation.id,
                 store_id: storeId,
-                whatsapp_message_id: message.id,
-                direction: "incoming",
-                message_type: message.type,
-                body: messageBody,
-                status: "received",
+                phone,
+                customer_name: customerName,
+                last_message_at: createdAt,
+                unread_count: 0,
                 created_at: createdAt,
-              });
+                updated_at: new Date().toISOString(),
+              })
+              .select(
+                "id, store_id, order_id, phone, customer_name, unread_count"
+              )
+              .single();
+
+            if (createError) {
+              console.error(
+                "Conversation creation error:",
+                createError
+              );
+
+              continue;
+            }
+
+            conversationId = newConversation.id;
+
+            console.log(
+              "New WhatsApp conversation created:",
+              conversationId
+            );
+          } else {
+            conversationId = existingConversation.id;
+
+            currentUnread = Number(
+              existingConversation.unread_count || 0
+            );
+
+            // ------------------------------------------------
+            // Update customer name if we did not have one
+            // ------------------------------------------------
+
+            const updateConversationData: Record<
+              string,
+              any
+            > = {
+              last_message_at: createdAt,
+              updated_at: new Date().toISOString(),
+            };
+
+            if (
+              customerName &&
+              !existingConversation.customer_name
+            ) {
+              updateConversationData.customer_name =
+                customerName;
+            }
+
+            const {
+              error: conversationUpdateError,
+            } = await supabase
+              .from("whatsapp_conversations")
+              .update(updateConversationData)
+              .eq(
+                "id",
+                conversationId
+              );
+
+            if (conversationUpdateError) {
+              console.error(
+                "Conversation update error:",
+                conversationUpdateError
+              );
+
+              continue;
+            }
+          }
+
+          // ==================================================
+          // 8. SAVE MESSAGE
+          // ==================================================
+
+          const {
+            error: insertMessageError,
+          } = await supabase
+            .from("whatsapp_messages")
+            .insert({
+              conversation_id: conversationId,
+              store_id: storeId,
+              whatsapp_message_id: message.id,
+              direction: "incoming",
+              message_type: message.type,
+              body: messageBody,
+              status: "received",
+              created_at: createdAt,
+            });
 
           if (insertMessageError) {
             console.error(
@@ -441,36 +509,81 @@ export async function POST(request: NextRequest) {
             "WhatsApp message saved:",
             message.id
           );
+
+          // ==================================================
+          // 9. INCREMENT UNREAD COUNT
+          // ==================================================
+
+          const newUnreadCount =
+            currentUnread + 1;
+
+          const {
+            error: unreadUpdateError,
+          } = await supabase
+            .from("whatsapp_conversations")
+            .update({
+              unread_count: newUnreadCount,
+              last_message_at: createdAt,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", conversationId);
+
+          if (unreadUpdateError) {
+            console.error(
+              "Unread count update error:",
+              unreadUpdateError
+            );
+          } else {
+            console.log(
+              "Unread count updated:",
+              newUnreadCount
+            );
+          }
+
+          console.log(
+            "===== INCOMING MESSAGE PROCESSING COMPLETE ====="
+          );
         }
 
         // =====================================================
-        // 8. MESSAGE STATUS UPDATES
+        // 10. MESSAGE STATUS UPDATES
         // =====================================================
 
-        const statuses: WhatsAppStatus[] = Array.isArray(
-          value.statuses
-        )
-          ? value.statuses
-          : [];
+        const statuses: WhatsAppStatus[] =
+          Array.isArray(value.statuses)
+            ? value.statuses
+            : [];
 
         for (const status of statuses) {
           if (!status?.id || !status?.status) {
             continue;
           }
 
-          console.log("===== WHATSAPP MESSAGE STATUS =====");
-          console.log("Message ID:", status.id);
-          console.log("Status:", status.status);
+          console.log(
+            "===== WHATSAPP MESSAGE STATUS ====="
+          );
 
-          const { data: existingMessage, error: statusFindError } =
-            await supabase
-              .from("whatsapp_messages")
-              .select("id, status")
-              .eq(
-                "whatsapp_message_id",
-                status.id
-              )
-              .maybeSingle();
+          console.log(
+            "Message ID:",
+            status.id
+          );
+
+          console.log(
+            "Status:",
+            status.status
+          );
+
+          const {
+            data: existingMessage,
+            error: statusFindError,
+          } = await supabase
+            .from("whatsapp_messages")
+            .select("id, status")
+            .eq(
+              "whatsapp_message_id",
+              status.id
+            )
+            .maybeSingle();
 
           if (statusFindError) {
             console.error(
@@ -490,13 +603,17 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          const { error: updateStatusError } =
-            await supabase
-              .from("whatsapp_messages")
-              .update({
-                status: status.status,
-              })
-              .eq("id", existingMessage.id);
+          const {
+            error: updateStatusError,
+          } = await supabase
+            .from("whatsapp_messages")
+            .update({
+              status: status.status,
+            })
+            .eq(
+              "id",
+              existingMessage.id
+            );
 
           if (updateStatusError) {
             console.error(
@@ -517,11 +634,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ========================================================
+    // SUCCESS
+    // ========================================================
+
     return NextResponse.json(
       {
         success: true,
       },
-      { status: 200 }
+      {
+        status: 200,
+      }
     );
   } catch (error) {
     console.error(
@@ -534,7 +657,9 @@ export async function POST(request: NextRequest) {
         success: false,
         message: "Invalid webhook payload",
       },
-      { status: 400 }
+      {
+        status: 400,
+      }
     );
   }
 }
