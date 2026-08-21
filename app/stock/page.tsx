@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Camera,
   Check,
   ChevronDown,
   ChevronRight,
@@ -87,6 +88,13 @@ export default function StockPage() {
     useState<number | null>(null);
 
   // =========================================================
+  // IMAGE EDITING
+  // =========================================================
+
+  const [changingImageVariantId, setChangingImageVariantId] =
+    useState<number | null>(null);
+
+  // =========================================================
   // LOAD STOCK
   // =========================================================
 
@@ -98,19 +106,23 @@ export default function StockPage() {
     try {
       setLoading(true);
 
-      const { data: productsData, error: productsError } =
-        await supabase
-          .from("stock_products")
-          .select("*")
-          .order("created_at", { ascending: false });
+      const {
+        data: productsData,
+        error: productsError,
+      } = await supabase
+        .from("stock_products")
+        .select("*")
+        .order("created_at", { ascending: false });
 
       if (productsError) throw productsError;
 
-      const { data: variantsData, error: variantsError } =
-        await supabase
-          .from("stock_variants")
-          .select("*")
-          .order("created_at", { ascending: true });
+      const {
+        data: variantsData,
+        error: variantsError,
+      } = await supabase
+        .from("stock_variants")
+        .select("*")
+        .order("created_at", { ascending: true });
 
       if (variantsError) throw variantsError;
 
@@ -259,6 +271,7 @@ export default function StockPage() {
       const size = editingValues.size.trim();
 
       const quantity = Number(editingValues.quantity);
+
       const purchasePrice = Number(
         editingValues.purchase_price
       );
@@ -333,6 +346,186 @@ export default function StockPage() {
   }
 
   // =========================================================
+  // CHANGE VARIANT IMAGE
+  // =========================================================
+
+  async function changeVariantImage(
+    variant: StockVariant,
+    file: File
+  ) {
+    try {
+      setChangingImageVariantId(variant.id);
+
+      // -------------------------------------------------------
+      // VALIDATION
+      // -------------------------------------------------------
+
+      if (!file.type.startsWith("image/")) {
+        throw new Error(
+          "Veuillez sélectionner une image valide."
+        );
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error(
+          "L'image ne doit pas dépasser 5 MB."
+        );
+      }
+
+      // -------------------------------------------------------
+      // CURRENT USER
+      // -------------------------------------------------------
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) throw userError;
+
+      if (!user) {
+        throw new Error("Utilisateur non connecté.");
+      }
+
+      // -------------------------------------------------------
+      // STORE
+      // -------------------------------------------------------
+
+      const {
+        data: store,
+        error: storeError,
+      } = await supabase
+        .from("stores")
+        .select("id")
+        .eq("owner_id", user.id)
+        .single();
+
+      if (storeError) throw storeError;
+
+      if (!store) {
+        throw new Error(
+          "Aucun magasin trouvé pour cet utilisateur."
+        );
+      }
+
+      // -------------------------------------------------------
+      // FILE EXTENSION
+      // -------------------------------------------------------
+
+      const extension =
+        file.name
+          .split(".")
+          .pop()
+          ?.toLowerCase() || "jpg";
+
+      // -------------------------------------------------------
+      // NEW STORAGE PATH
+      // -------------------------------------------------------
+
+      const newPath =
+        `${store.id}/${variant.product_id}/${crypto.randomUUID()}.${extension}`;
+
+      // -------------------------------------------------------
+      // UPLOAD NEW IMAGE
+      // -------------------------------------------------------
+
+      const {
+        error: uploadError,
+      } = await supabase.storage
+        .from("stock-images")
+        .upload(newPath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      // -------------------------------------------------------
+      // PUBLIC URL
+      // -------------------------------------------------------
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage
+        .from("stock-images")
+        .getPublicUrl(newPath);
+
+      // -------------------------------------------------------
+      // UPDATE DATABASE
+      // -------------------------------------------------------
+
+      const {
+        error: updateError,
+      } = await supabase
+        .from("stock_variants")
+        .update({
+          image_url: publicUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", variant.id);
+
+      // -------------------------------------------------------
+      // IF DB UPDATE FAILED
+      // DELETE NEW IMAGE
+      // -------------------------------------------------------
+
+      if (updateError) {
+        await supabase.storage
+          .from("stock-images")
+          .remove([newPath]);
+
+        throw updateError;
+      }
+
+      // -------------------------------------------------------
+      // DELETE OLD IMAGE
+      // -------------------------------------------------------
+
+      if (variant.image_url) {
+        const oldPath = getStockImagePath(
+          variant.image_url
+        );
+
+        if (oldPath) {
+          const {
+            error: deleteOldError,
+          } = await supabase.storage
+            .from("stock-images")
+            .remove([oldPath]);
+
+          if (deleteOldError) {
+            console.warn(
+              "Nouvelle image enregistrée, mais l'ancienne image n'a pas pu être supprimée:",
+              deleteOldError
+            );
+          }
+        }
+      }
+
+      // -------------------------------------------------------
+      // REFRESH STOCK
+      // -------------------------------------------------------
+
+      await fetchStock();
+    } catch (error) {
+      console.error(
+        "Erreur changement image:",
+        error
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Impossible de modifier l'image."
+      );
+    } finally {
+      setChangingImageVariantId(null);
+    }
+  }
+
+  // =========================================================
   // DELETE VARIANT
   // =========================================================
 
@@ -348,7 +541,10 @@ export default function StockPage() {
     try {
       setDeletingVariantId(variant.id);
 
-      // Delete DB row
+      // -------------------------------------------------------
+      // DELETE DB ROW
+      // -------------------------------------------------------
+
       const { error } = await supabase
         .from("stock_variants")
         .delete()
@@ -356,17 +552,21 @@ export default function StockPage() {
 
       if (error) throw error;
 
-      // Delete image from Storage
+      // -------------------------------------------------------
+      // DELETE IMAGE FROM STORAGE
+      // -------------------------------------------------------
+
       if (variant.image_url) {
         const imagePath = getStockImagePath(
           variant.image_url
         );
 
         if (imagePath) {
-          const { error: storageError } =
-            await supabase.storage
-              .from("stock-images")
-              .remove([imagePath]);
+          const {
+            error: storageError,
+          } = await supabase.storage
+            .from("stock-images")
+            .remove([imagePath]);
 
           if (storageError) {
             console.warn(
@@ -409,7 +609,10 @@ export default function StockPage() {
     try {
       setIsAdding(true);
 
-      // 1. Current user
+      // -------------------------------------------------------
+      // CURRENT USER
+      // -------------------------------------------------------
+
       const {
         data: { user },
         error: userError,
@@ -421,13 +624,18 @@ export default function StockPage() {
         throw new Error("Utilisateur non connecté.");
       }
 
-      // 2. Store
-      const { data: store, error: storeError } =
-        await supabase
-          .from("stores")
-          .select("id")
-          .eq("owner_id", user.id)
-          .single();
+      // -------------------------------------------------------
+      // STORE
+      // -------------------------------------------------------
+
+      const {
+        data: store,
+        error: storeError,
+      } = await supabase
+        .from("stores")
+        .select("id")
+        .eq("owner_id", user.id)
+        .single();
 
       if (storeError) throw storeError;
 
@@ -437,16 +645,23 @@ export default function StockPage() {
         );
       }
 
-      // 3. Create product
-      const { data: product, error: productError } =
-        await supabase
-          .from("stock_products")
-          .insert({
-            store_id: store.id,
-            name: name.trim(),
-          })
-          .select("id, store_id, name, created_at")
-          .single();
+      // -------------------------------------------------------
+      // CREATE PRODUCT
+      // -------------------------------------------------------
+
+      const {
+        data: product,
+        error: productError,
+      } = await supabase
+        .from("stock_products")
+        .insert({
+          store_id: store.id,
+          name: name.trim(),
+        })
+        .select(
+          "id, store_id, name, created_at"
+        )
+        .single();
 
       if (productError) throw productError;
 
@@ -468,7 +683,10 @@ export default function StockPage() {
       }[] = [];
 
       try {
-        // 4. Upload images
+        // -----------------------------------------------------
+        // UPLOAD IMAGES
+        // -----------------------------------------------------
+
         for (const variant of variants) {
           if (!variant.imageFile) {
             throw new Error(
@@ -487,13 +705,14 @@ export default function StockPage() {
           const filePath =
             `${store.id}/${product.id}/${crypto.randomUUID()}.${extension}`;
 
-          const { error: uploadError } =
-            await supabase.storage
-              .from("stock-images")
-              .upload(filePath, file, {
-                cacheControl: "3600",
-                upsert: false,
-              });
+          const {
+            error: uploadError,
+          } = await supabase.storage
+            .from("stock-images")
+            .upload(filePath, file, {
+              cacheControl: "3600",
+              upsert: false,
+            });
 
           if (uploadError) {
             throw uploadError;
@@ -512,36 +731,53 @@ export default function StockPage() {
             color: variant.color.trim(),
             size: variant.size.trim(),
             image_url: publicUrl,
-            quantity: Number(variant.quantity) || 0,
+            quantity:
+              Number(variant.quantity) || 0,
             purchase_price:
               Number(variant.purchase_price) || 0,
           });
         }
 
-        // 5. Insert variants
-        const { error: variantsError } =
-          await supabase
-            .from("stock_variants")
-            .insert(variantRows);
+        // -----------------------------------------------------
+        // INSERT VARIANTS
+        // -----------------------------------------------------
+
+        const {
+          error: variantsError,
+        } = await supabase
+          .from("stock_variants")
+          .insert(variantRows);
 
         if (variantsError) {
           throw variantsError;
         }
 
-        // 6. Close modal
+        // -----------------------------------------------------
+        // CLOSE MODAL
+        // -----------------------------------------------------
+
         setIsAddModalOpen(false);
 
-        // 7. Refresh
+        // -----------------------------------------------------
+        // REFRESH
+        // -----------------------------------------------------
+
         await fetchStock();
       } catch (innerError) {
-        // Cleanup uploaded images
+        // -----------------------------------------------------
+        // CLEANUP UPLOADED IMAGES
+        // -----------------------------------------------------
+
         if (uploadedPaths.length > 0) {
           await supabase.storage
             .from("stock-images")
             .remove(uploadedPaths);
         }
 
-        // Cleanup product
+        // -----------------------------------------------------
+        // CLEANUP PRODUCT
+        // -----------------------------------------------------
+
         await supabase
           .from("stock_products")
           .delete()
@@ -571,7 +807,6 @@ export default function StockPage() {
 
   return (
     <div className="space-y-6">
-
       {/* =====================================================
           HEADER
       ===================================================== */}
@@ -602,7 +837,6 @@ export default function StockPage() {
       ===================================================== */}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-
         <StatCard
           title="Modèles"
           value={totalProducts.toLocaleString("fr-FR")}
@@ -628,7 +862,6 @@ export default function StockPage() {
           value={formatMoney(totalValue)}
           description="Prix d'achat"
         />
-
       </div>
 
       {/* =====================================================
@@ -636,10 +869,9 @@ export default function StockPage() {
       ===================================================== */}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* SEARCH */}
 
-        {/* Search */}
         <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-
           <div>
             <h2 className="text-base font-bold text-slate-900">
               Inventaire
@@ -652,7 +884,6 @@ export default function StockPage() {
           </div>
 
           <div className="relative w-full sm:w-80">
-
             <Search
               size={18}
               className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -667,12 +898,11 @@ export default function StockPage() {
               placeholder="Rechercher modèle, couleur, taille..."
               className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-700 outline-none transition focus:border-orange-300 focus:bg-white focus:ring-2 focus:ring-orange-100"
             />
-
           </div>
-
         </div>
 
-        {/* Loading */}
+        {/* LOADING */}
+
         {loading ? (
           <div className="flex min-h-64 items-center justify-center">
             <div className="text-sm font-medium text-slate-500">
@@ -681,7 +911,6 @@ export default function StockPage() {
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="flex min-h-64 flex-col items-center justify-center px-6 text-center">
-
             <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
               <Package
                 size={24}
@@ -696,20 +925,16 @@ export default function StockPage() {
             <p className="mt-1 text-xs text-slate-400">
               Ajoutez votre premier modèle pour commencer.
             </p>
-
           </div>
         ) : (
           <div className="overflow-x-auto">
-
             <table className="w-full min-w-[1250px] text-left">
-
               {/* =================================================
                   TABLE HEADER
               ================================================= */}
 
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/90">
-
                   <th className="w-14 px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-400">
                     #
                   </th>
@@ -745,7 +970,6 @@ export default function StockPage() {
                   <th className="w-24 px-5 py-4 text-right text-xs font-bold uppercase tracking-wide text-slate-400">
                     Actions
                   </th>
-
                 </tr>
               </thead>
 
@@ -756,7 +980,6 @@ export default function StockPage() {
               <tbody>
                 {filteredProducts.map(
                   (product, index) => {
-
                     const expanded =
                       expandedProducts.includes(
                         product.id
@@ -787,6 +1010,9 @@ export default function StockPage() {
                         deletingVariantId={
                           deletingVariantId
                         }
+                        changingImageVariantId={
+                          changingImageVariantId
+                        }
                         onStartEdit={
                           startEditVariant
                         }
@@ -799,17 +1025,17 @@ export default function StockPage() {
                         onDeleteVariant={
                           deleteVariant
                         }
+                        onChangeImage={
+                          changeVariantImage
+                        }
                       />
                     );
                   }
                 )}
               </tbody>
-
             </table>
-
           </div>
         )}
-
       </div>
 
       {/* =====================================================
@@ -824,11 +1050,9 @@ export default function StockPage() {
         onAdd={handleAddProduct}
         isAdding={isAdding}
       />
-
     </div>
   );
 }
-
 
 /* ===========================================================
    PRODUCT ROWS
@@ -845,10 +1069,12 @@ function ProductRows({
   setEditingValues,
   savingVariantId,
   deletingVariantId,
+  changingImageVariantId,
   onStartEdit,
   onCancelEdit,
   onSaveVariant,
   onDeleteVariant,
+  onChangeImage,
 }: {
   product: ProductWithVariants;
   index: number;
@@ -866,11 +1092,17 @@ function ProductRows({
 
   savingVariantId: number | null;
   deletingVariantId: number | null;
+  changingImageVariantId: number | null;
 
   onStartEdit: (variant: StockVariant) => void;
   onCancelEdit: () => void;
   onSaveVariant: (variantId: number) => void;
   onDeleteVariant: (variant: StockVariant) => void;
+
+  onChangeImage: (
+    variant: StockVariant,
+    file: File
+  ) => void;
 }) {
   const firstVariant = product.variants[0];
 
@@ -888,11 +1120,13 @@ function ProductRows({
             className="flex w-full items-center gap-5 px-5 py-5 text-left transition-colors hover:bg-orange-50/40"
           >
             {/* # */}
+
             <div className="w-8 shrink-0 text-sm font-semibold text-slate-400">
               {index + 1}
             </div>
 
             {/* PHOTO */}
+
             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
               {firstVariant?.image_url ? (
                 <img
@@ -908,6 +1142,7 @@ function ProductRows({
             </div>
 
             {/* MODEL */}
+
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-base font-bold text-slate-900">
@@ -916,7 +1151,9 @@ function ProductRows({
 
                 <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600">
                   {product.variants.length} variante
-                  {product.variants.length !== 1 ? "s" : ""}
+                  {product.variants.length !== 1
+                    ? "s"
+                    : ""}
                 </span>
               </div>
 
@@ -924,20 +1161,26 @@ function ProductRows({
                 <span className="text-slate-500">
                   Quantité totale :
                   <strong className="ml-1.5 font-bold text-slate-900">
-                    {product.totalQuantity.toLocaleString("fr-FR")} P
+                    {product.totalQuantity.toLocaleString(
+                      "fr-FR"
+                    )}{" "}
+                    P
                   </strong>
                 </span>
 
                 <span className="text-slate-500">
                   Valeur totale :
                   <strong className="ml-1.5 font-bold text-slate-900">
-                    {formatMoney(product.totalValue)}
+                    {formatMoney(
+                      product.totalValue
+                    )}
                   </strong>
                 </span>
               </div>
             </div>
 
             {/* EXPAND */}
+
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-colors">
               {expanded ? (
                 <ChevronDown size={20} />
@@ -997,7 +1240,11 @@ function ProductRows({
 
       {expanded &&
         product.variants.map((variant) => {
-          const isEditing = editingVariantId === variant.id;
+          const isEditing =
+            editingVariantId === variant.id;
+
+          const isChangingImage =
+            changingImageVariantId === variant.id;
 
           const variantValue =
             Number(variant.quantity || 0) *
@@ -1009,45 +1256,123 @@ function ProductRows({
               className="border-b border-slate-100 bg-white transition-colors hover:bg-slate-50"
             >
               {/* EMPTY # */}
+
               <td className="px-5 py-5" />
 
-              {/* PHOTO */}
+              {/* =================================================
+                  PHOTO
+              ================================================= */}
+
               <td className="px-5 py-5">
-                <div className="h-14 w-14 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <label
+                  title="Changer la photo"
+                  className={`group relative block h-14 w-14 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${
+                    isChangingImage
+                      ? "cursor-wait"
+                      : "cursor-pointer"
+                  }`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                >
+                  {/* IMAGE */}
+
                   {variant.image_url ? (
                     <img
                       src={variant.image_url}
                       alt={`${product.name} ${variant.color} ${variant.size}`}
-                      className="h-full w-full object-cover"
+                      className={`h-full w-full object-cover transition-transform duration-200 ${
+                        !isChangingImage
+                          ? "group-hover:scale-105"
+                          : ""
+                      }`}
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-slate-300">
-                      —
+                    <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-300">
+                      <Package size={18} />
                     </div>
                   )}
-                </div>
+
+                  {/* HOVER OVERLAY */}
+
+                  {!isChangingImage && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      <Camera
+                        size={19}
+                        className="text-white"
+                      />
+                    </div>
+                  )}
+
+                  {/* LOADING */}
+
+                  {isChangingImage && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/55">
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    </div>
+                  )}
+
+                  {/* FILE INPUT */}
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={isChangingImage}
+                    onChange={(event) => {
+                      event.stopPropagation();
+
+                      const file =
+                        event.target.files?.[0];
+
+                      if (!file) {
+                        return;
+                      }
+
+                      onChangeImage(
+                        variant,
+                        file
+                      );
+
+                      // Allow selecting
+                      // the same image again
+                      event.currentTarget.value =
+                        "";
+                    }}
+                  />
+                </label>
               </td>
 
-              {/* MODEL */}
+              {/* =================================================
+                  MODEL
+              ================================================= */}
+
               <td className="px-5 py-5">
                 <span className="text-sm font-semibold text-slate-500">
                   {product.name}
                 </span>
               </td>
 
-              {/* COULEUR */}
+              {/* =================================================
+                  COULEUR
+              ================================================= */}
+
               <td className="px-5 py-5">
                 {isEditing ? (
                   <input
                     type="text"
                     value={editingValues.color}
                     onChange={(event) =>
-                      setEditingValues((current) => ({
-                        ...current,
-                        color: event.target.value,
-                      }))
+                      setEditingValues(
+                        (current) => ({
+                          ...current,
+                          color: event.target.value,
+                        })
+                      )
                     }
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event) =>
+                      event.stopPropagation()
+                    }
                     className="h-10 w-full min-w-[120px] rounded-xl border border-orange-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none ring-2 ring-orange-100"
                   />
                 ) : (
@@ -1057,19 +1382,26 @@ function ProductRows({
                 )}
               </td>
 
-              {/* TAILLE */}
+              {/* =================================================
+                  TAILLE
+              ================================================= */}
+
               <td className="px-5 py-5">
                 {isEditing ? (
                   <input
                     type="text"
                     value={editingValues.size}
                     onChange={(event) =>
-                      setEditingValues((current) => ({
-                        ...current,
-                        size: event.target.value,
-                      }))
+                      setEditingValues(
+                        (current) => ({
+                          ...current,
+                          size: event.target.value,
+                        })
+                      )
                     }
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event) =>
+                      event.stopPropagation()
+                    }
                     className="h-10 w-24 rounded-xl border border-orange-300 bg-white px-3 text-center text-sm font-bold text-slate-700 outline-none ring-2 ring-orange-100"
                   />
                 ) : (
@@ -1079,7 +1411,10 @@ function ProductRows({
                 )}
               </td>
 
-              {/* QUANTITÉ */}
+              {/* =================================================
+                  QUANTITÉ
+              ================================================= */}
+
               <td className="px-5 py-5 text-right">
                 {isEditing ? (
                   <input
@@ -1088,12 +1423,17 @@ function ProductRows({
                     step="1"
                     value={editingValues.quantity}
                     onChange={(event) =>
-                      setEditingValues((current) => ({
-                        ...current,
-                        quantity: event.target.value,
-                      }))
+                      setEditingValues(
+                        (current) => ({
+                          ...current,
+                          quantity:
+                            event.target.value,
+                        })
+                      )
                     }
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event) =>
+                      event.stopPropagation()
+                    }
                     className="ml-auto h-10 w-28 rounded-xl border border-orange-300 bg-white px-3 text-right text-sm font-bold text-slate-700 outline-none ring-2 ring-orange-100"
                   />
                 ) : (
@@ -1106,7 +1446,10 @@ function ProductRows({
                 )}
               </td>
 
-              {/* PRIX D'ACHAT */}
+              {/* =================================================
+                  PRIX D'ACHAT
+              ================================================= */}
+
               <td className="px-5 py-5 text-right">
                 {isEditing ? (
                   <div className="flex items-center justify-end gap-2">
@@ -1114,14 +1457,21 @@ function ProductRows({
                       type="number"
                       min="0"
                       step="0.01"
-                      value={editingValues.purchase_price}
-                      onChange={(event) =>
-                        setEditingValues((current) => ({
-                          ...current,
-                          purchase_price: event.target.value,
-                        }))
+                      value={
+                        editingValues.purchase_price
                       }
-                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) =>
+                        setEditingValues(
+                          (current) => ({
+                            ...current,
+                            purchase_price:
+                              event.target.value,
+                          })
+                        )
+                      }
+                      onClick={(event) =>
+                        event.stopPropagation()
+                      }
                       className="h-10 w-28 rounded-xl border border-orange-300 bg-white px-3 text-right text-sm font-bold text-slate-700 outline-none ring-2 ring-orange-100"
                     />
 
@@ -1132,36 +1482,52 @@ function ProductRows({
                 ) : (
                   <span className="text-[15px] font-bold text-slate-900">
                     {formatMoney(
-                      Number(variant.purchase_price || 0)
+                      Number(
+                        variant.purchase_price || 0
+                      )
                     )}
                   </span>
                 )}
               </td>
 
-              {/* VALEUR */}
+              {/* =================================================
+                  VALEUR
+              ================================================= */}
+
               <td className="px-5 py-5 text-right">
                 <span className="text-[15px] font-bold text-slate-900">
                   {formatMoney(variantValue)}
                 </span>
               </td>
 
-              {/* ACTIONS */}
+              {/* =================================================
+                  ACTIONS
+              ================================================= */}
+
               <td className="px-5 py-5">
                 <div className="flex items-center justify-end gap-2">
                   {isEditing ? (
                     <>
                       {/* SAVE */}
+
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onSaveVariant(variant.id);
+
+                          onSaveVariant(
+                            variant.id
+                          );
                         }}
-                        disabled={savingVariantId === variant.id}
+                        disabled={
+                          savingVariantId ===
+                          variant.id
+                        }
                         title="Enregistrer"
                         className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-green-200 bg-green-50 text-green-600 transition-colors hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {savingVariantId === variant.id ? (
+                        {savingVariantId ===
+                        variant.id ? (
                           <span className="h-4 w-4 animate-spin rounded-full border-2 border-green-300 border-t-green-600" />
                         ) : (
                           <Check size={17} />
@@ -1169,13 +1535,18 @@ function ProductRows({
                       </button>
 
                       {/* CANCEL */}
+
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
+
                           onCancelEdit();
                         }}
-                        disabled={savingVariantId === variant.id}
+                        disabled={
+                          savingVariantId ===
+                          variant.id
+                        }
                         title="Annuler"
                         className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-50"
                       >
@@ -1185,13 +1556,22 @@ function ProductRows({
                   ) : (
                     <>
                       {/* EDIT */}
+
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onStartEdit(variant);
+
+                          onStartEdit(
+                            variant
+                          );
                         }}
-                        disabled={deletingVariantId === variant.id}
+                        disabled={
+                          deletingVariantId ===
+                          variant.id ||
+                          changingImageVariantId ===
+                            variant.id
+                        }
                         title="Modifier"
                         className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
                       >
@@ -1199,17 +1579,27 @@ function ProductRows({
                       </button>
 
                       {/* DELETE */}
+
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onDeleteVariant(variant);
+
+                          onDeleteVariant(
+                            variant
+                          );
                         }}
-                        disabled={deletingVariantId === variant.id}
+                        disabled={
+                          deletingVariantId ===
+                            variant.id ||
+                          changingImageVariantId ===
+                            variant.id
+                        }
                         title="Supprimer"
                         className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-100 bg-white text-red-500 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {deletingVariantId === variant.id ? (
+                        {deletingVariantId ===
+                        variant.id ? (
                           <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-200 border-t-red-500" />
                         ) : (
                           <Trash2 size={16} />
@@ -1226,7 +1616,6 @@ function ProductRows({
   );
 }
 
-
 /* ===========================================================
    STAT CARD
 =========================================================== */
@@ -1242,7 +1631,6 @@ function StatCard({
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-
       <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
         {title}
       </p>
@@ -1254,7 +1642,6 @@ function StatCard({
       <p className="mt-1 text-xs text-slate-400">
         {description}
       </p>
-
     </div>
   );
 }
