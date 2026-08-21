@@ -58,6 +58,12 @@ export default function WhatsAppPage() {
   const [sending, setSending] =
     useState(false);
 
+  const [selectedImage, setSelectedImage] =
+    useState<File | null>(null);
+
+  const [imageCaption, setImageCaption] =
+    useState("");
+
   async function loadInbox() {
     try {
       setLoading(true);
@@ -228,6 +234,80 @@ export default function WhatsAppPage() {
         error instanceof Error
           ? error.message
           : "Erreur lors de l'envoi du message."
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleSendImage() {
+    if (
+      !selectedConversation ||
+      !selectedImage ||
+      sending
+    ) {
+      return;
+    }
+
+    try {
+      setSending(true);
+
+      const formData =
+        new FormData();
+
+      formData.append(
+        "conversation_id",
+        String(
+          selectedConversation.id
+        )
+      );
+
+      formData.append(
+        "file",
+        selectedImage
+      );
+
+      formData.append(
+        "caption",
+        imageCaption.trim()
+      );
+
+      const response =
+        await fetch(
+          "/api/whatsapp/media/send",
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+      const result =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Erreur lors de l'envoi de l'image."
+        );
+      }
+
+      setSelectedImage(null);
+      setImageCaption("");
+
+      await loadInbox();
+    } catch (error) {
+      console.error(
+        "Send image error:",
+        error
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Erreur lors de l'envoi de l'image."
       );
     } finally {
       setSending(false);
@@ -605,8 +685,67 @@ export default function WhatsAppPage() {
             {/* COMPOSER */}
 
             <div className="border-t bg-white p-4">
+              {selectedImage && (
+                <div className="mb-3 flex items-center gap-3 rounded-xl border bg-slate-50 p-3">
+                  <img
+                    src={URL.createObjectURL(
+                      selectedImage
+                    )}
+                    alt="Preview"
+                    className="h-20 w-20 rounded-lg object-cover"
+                  />
 
-              <div className="flex gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-700">
+                      {selectedImage.name}
+                    </p>
+
+                    <input
+                      value={imageCaption}
+                      onChange={(event) =>
+                        setImageCaption(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Ajouter une légende..."
+                      className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedImage(null);
+                      setImageCaption("");
+                    }}
+                    className="text-xs font-medium text-red-500"
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <label className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50">
+                  📎
+
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    className="hidden"
+                    disabled={sending}
+                    onChange={(event) => {
+                      const file =
+                        event.target.files?.[0];
+
+                      if (!file) return;
+
+                      setSelectedImage(file);
+
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
 
                 <input
                   value={newMessage}
@@ -615,29 +754,45 @@ export default function WhatsAppPage() {
                       event.target.value
                     )
                   }
-                  onKeyDown={
-                    handleKeyDown
+                  onKeyDown={handleKeyDown}
+                  disabled={
+                    sending ||
+                    !!selectedImage
                   }
-                  disabled={sending}
-                  placeholder="Écrire un message..."
+                  placeholder={
+                    selectedImage
+                      ? "Image sélectionnée..."
+                      : "Écrire un message..."
+                  }
                   className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
                 />
 
-                <button
-                  type="button"
-                  onClick={
-                    handleSendMessage
-                  }
-                  disabled={
-                    sending ||
-                    !newMessage.trim()
-                  }
-                  className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Send
-                    size={18}
-                  />
-                </button>
+                {selectedImage ? (
+                  <button
+                    type="button"
+                    onClick={
+                      handleSendImage
+                    }
+                    disabled={sending}
+                    className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Send size={18} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={
+                      handleSendMessage
+                    }
+                    disabled={
+                      sending ||
+                      !newMessage.trim()
+                    }
+                    className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Send size={18} />
+                  </button>
+                )}
 
               </div>
 
