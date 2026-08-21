@@ -21,24 +21,33 @@ type WhatsAppMessage = {
   };
 
   image?: {
+    id?: string;
+    mime_type?: string;
     caption?: string;
   };
 
   video?: {
+    id?: string;
+    mime_type?: string;
     caption?: string;
   };
 
   document?: {
+    id?: string;
+    mime_type?: string;
     caption?: string;
     filename?: string;
   };
 
   audio?: {
     id?: string;
+    mime_type?: string;
+    voice?: boolean;
   };
 
   sticker?: {
     id?: string;
+    mime_type?: string;
   };
 
   location?: {
@@ -157,6 +166,79 @@ function getMessageBody(
   }
 }
 
+function getMessageMedia(
+  message: WhatsAppMessage
+) {
+  switch (message.type) {
+    case "image":
+      return {
+        mediaId:
+          message.image?.id || null,
+
+        mimeType:
+          message.image?.mime_type || null,
+
+        caption:
+          message.image?.caption || null,
+      };
+
+    case "audio":
+      return {
+        mediaId:
+          message.audio?.id || null,
+
+        mimeType:
+          message.audio?.mime_type || null,
+
+        caption: null,
+      };
+
+    case "video":
+      return {
+        mediaId:
+          message.video?.id || null,
+
+        mimeType:
+          message.video?.mime_type || null,
+
+        caption:
+          message.video?.caption || null,
+      };
+
+    case "document":
+      return {
+        mediaId:
+          message.document?.id || null,
+
+        mimeType:
+          message.document?.mime_type || null,
+
+        caption:
+          message.document?.caption ||
+          message.document?.filename ||
+          null,
+      };
+
+    case "sticker":
+      return {
+        mediaId:
+          message.sticker?.id || null,
+
+        mimeType:
+          message.sticker?.mime_type || null,
+
+        caption: null,
+      };
+
+    default:
+      return {
+        mediaId: null,
+        mimeType: null,
+        caption: null,
+      };
+  }
+}
+
 function getMessageCreatedAt(
   timestamp?: string
 ) {
@@ -164,7 +246,8 @@ function getMessageCreatedAt(
     return new Date().toISOString();
   }
 
-  const timestampNumber = Number(timestamp);
+  const timestampNumber =
+    Number(timestamp);
 
   if (!Number.isFinite(timestampNumber)) {
     return new Date().toISOString();
@@ -204,6 +287,7 @@ export async function GET(
   );
 
   console.log("Mode:", mode);
+
   console.log(
     "Challenge:",
     challenge
@@ -294,11 +378,10 @@ export async function POST(
       );
     }
 
-    const entries = Array.isArray(
-      body.entry
-    )
-      ? body.entry
-      : [];
+    const entries =
+      Array.isArray(body.entry)
+        ? body.entry
+        : [];
 
     // ========================================================
     // 2. LOOP ENTRIES
@@ -472,6 +555,11 @@ export async function POST(
               message
             );
 
+          const media =
+            getMessageMedia(
+              message
+            );
+
           console.log(
             "===== INCOMING WHATSAPP MESSAGE ====="
           );
@@ -504,6 +592,21 @@ export async function POST(
           console.log(
             "Body:",
             messageBody
+          );
+
+          console.log(
+            "Media ID:",
+            media.mediaId
+          );
+
+          console.log(
+            "Media MIME:",
+            media.mimeType
+          );
+
+          console.log(
+            "Caption:",
+            media.caption
           );
 
           // ==================================================
@@ -580,7 +683,7 @@ export async function POST(
           }
 
           let conversationId:
-            | number;
+            number;
 
           let currentUnread = 0;
 
@@ -731,6 +834,15 @@ export async function POST(
 
               body:
                 messageBody,
+
+              media_id:
+                media.mediaId,
+
+              media_mime_type:
+                media.mimeType,
+
+              caption:
+                media.caption,
 
               status:
                 "received",
