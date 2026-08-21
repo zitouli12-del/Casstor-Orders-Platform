@@ -19,9 +19,16 @@ interface Conversation {
 interface WhatsAppMessage {
   id: number;
   conversation_id: number;
-  direction: "incoming" | "outgoing";
+  direction:
+    | "incoming"
+    | "outgoing";
   message_type: string;
   body: string | null;
+
+  media_id: string | null;
+  media_mime_type: string | null;
+  caption: string | null;
+
   status: string | null;
   created_at: string;
 }
@@ -501,10 +508,72 @@ export default function WhatsAppPage() {
                           }`}
                         >
 
-                          <p className="whitespace-pre-wrap break-words">
-                            {message.body ||
-                              `[${message.message_type}]`}
-                          </p>
+                          {message.message_type === "image" &&
+                          message.media_id ? (
+                            <div className="space-y-2">
+                              <img
+                                src={`/api/whatsapp/media/${encodeURIComponent(
+                                  message.media_id
+                                )}`}
+                                alt={
+                                  message.caption ||
+                                  "WhatsApp image"
+                                }
+                                className="max-h-[420px] max-w-[320px] rounded-xl object-contain"
+                                loading="lazy"
+                              />
+
+                              {message.caption && (
+                                <p className="whitespace-pre-wrap break-words">
+                                  {message.caption}
+                                </p>
+                              )}
+                            </div>
+                          ) : message.message_type === "audio" &&
+                            message.media_id ? (
+                            <div className="space-y-2">
+                              <audio
+                                controls
+                                preload="metadata"
+                                className="max-w-full"
+                                src={`/api/whatsapp/media/${encodeURIComponent(
+                                  message.media_id
+                                )}`}
+                              />
+
+                              <p className="text-xs opacity-70">
+                                Message vocal
+                              </p>
+                            </div>
+                          ) : message.message_type === "video" &&
+                            message.media_id ? (
+                            <video
+                              controls
+                              preload="metadata"
+                              className="max-h-[420px] max-w-[360px] rounded-xl"
+                              src={`/api/whatsapp/media/${encodeURIComponent(
+                                message.media_id
+                              )}`}
+                            />
+                          ) : message.message_type ===
+                              "document" &&
+                            message.media_id ? (
+                            <a
+                              href={`/api/whatsapp/media/${encodeURIComponent(
+                                message.media_id
+                              )}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="underline"
+                            >
+                              📄 {message.caption || "Document"}
+                            </a>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words">
+                              {message.body ||
+                                `[${message.message_type}]`}
+                            </p>
+                          )}
 
                           <div
                             className={`mt-1 text-[10px] ${

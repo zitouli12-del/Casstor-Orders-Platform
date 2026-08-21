@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/src/lib/server";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL;
+
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -31,7 +33,8 @@ export async function GET() {
     // 1. Authenticated user
     // -----------------------------------------
 
-    const supabase = await getServerSupabase();
+    const supabase =
+      await getServerSupabase();
 
     const {
       data: { user },
@@ -42,9 +45,12 @@ export async function GET() {
       return NextResponse.json(
         {
           success: false,
-          message: "Utilisateur non authentifié.",
+          message:
+            "Utilisateur non authentifié.",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
@@ -52,20 +58,25 @@ export async function GET() {
     // 2. Store
     // -----------------------------------------
 
-    const { data: store, error: storeError } =
-      await supabase
-        .from("stores")
-        .select("id")
-        .eq("owner_id", user.id)
-        .single();
+    const {
+      data: store,
+      error: storeError,
+    } = await supabase
+      .from("stores")
+      .select("id")
+      .eq("owner_id", user.id)
+      .single();
 
     if (storeError || !store) {
       return NextResponse.json(
         {
           success: false,
-          message: "Store introuvable.",
+          message:
+            "Store introuvable.",
         },
-        { status: 404 }
+        {
+          status: 404,
+        }
       );
     }
 
@@ -73,7 +84,8 @@ export async function GET() {
     // 3. Admin client
     // -----------------------------------------
 
-    const admin = getSupabaseAdmin();
+    const admin =
+      getSupabaseAdmin();
 
     // -----------------------------------------
     // 4. Conversations
@@ -83,7 +95,9 @@ export async function GET() {
       data: conversations,
       error: conversationsError,
     } = await admin
-      .from("whatsapp_conversations")
+      .from(
+        "whatsapp_conversations"
+      )
       .select(`
         id,
         store_id,
@@ -95,11 +109,17 @@ export async function GET() {
         created_at,
         updated_at
       `)
-      .eq("store_id", store.id)
-      .order("last_message_at", {
-        ascending: false,
-        nullsFirst: false,
-      });
+      .eq(
+        "store_id",
+        store.id
+      )
+      .order(
+        "last_message_at",
+        {
+          ascending: false,
+          nullsFirst: false,
+        }
+      );
 
     if (conversationsError) {
       console.error(
@@ -113,7 +133,9 @@ export async function GET() {
           message:
             "Impossible de récupérer les conversations.",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
@@ -123,17 +145,22 @@ export async function GET() {
 
     const conversationIds =
       (conversations || []).map(
-        (conversation) => conversation.id
+        (conversation) =>
+          conversation.id
       );
 
     let messages: any[] = [];
 
-    if (conversationIds.length > 0) {
+    if (
+      conversationIds.length > 0
+    ) {
       const {
         data: messageData,
         error: messagesError,
       } = await admin
-        .from("whatsapp_messages")
+        .from(
+          "whatsapp_messages"
+        )
         .select(`
           id,
           conversation_id,
@@ -141,17 +168,28 @@ export async function GET() {
           direction,
           message_type,
           body,
+
+          media_id,
+          media_mime_type,
+          caption,
+
           status,
           created_at
         `)
-        .eq("store_id", store.id)
+        .eq(
+          "store_id",
+          store.id
+        )
         .in(
           "conversation_id",
           conversationIds
         )
-        .order("created_at", {
-          ascending: true,
-        });
+        .order(
+          "created_at",
+          {
+            ascending: true,
+          }
+        );
 
       if (messagesError) {
         console.error(
@@ -165,16 +203,24 @@ export async function GET() {
             message:
               "Impossible de récupérer les messages.",
           },
-          { status: 500 }
+          {
+            status: 500,
+          }
         );
       }
 
-      messages = messageData || [];
+      messages =
+        messageData || [];
     }
+
+    // -----------------------------------------
+    // 6. Success
+    // -----------------------------------------
 
     return NextResponse.json({
       success: true,
-      conversations: conversations || [],
+      conversations:
+        conversations || [],
       messages,
     });
   } catch (error) {
@@ -189,7 +235,9 @@ export async function GET() {
         message:
           "Une erreur inattendue est survenue.",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
