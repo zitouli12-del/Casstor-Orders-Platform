@@ -125,18 +125,27 @@ export async function POST(
     }
 
     // =====================================================
-    // 3. MP3 CHECK
+    // 3. AUDIO FORMAT
     // =====================================================
 
-    if (
-      file.type !==
-      "audio/mpeg"
-    ) {
+    const normalizedMimeType =
+      file.type
+        .toLowerCase()
+        .split(";")[0]
+        .trim();
+
+    const isOgg =
+      normalizedMimeType ===
+      "audio/ogg";
+
+    if (!isOgg) {
       return NextResponse.json(
         {
           success: false,
           message:
-            "Le fichier audio doit être au format MP3 (audio/mpeg).",
+            "Le fichier audio doit être au format OGG/Opus.",
+          received_type:
+            file.type,
         },
         {
           status: 400,
@@ -154,6 +163,19 @@ export async function POST(
           success: false,
           message:
             "L'audio dépasse la limite de 16 MB.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (file.size === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Le fichier audio est vide.",
         },
         {
           status: 400,
@@ -255,7 +277,7 @@ export async function POST(
     }
 
     // =====================================================
-    // 7. CONNECTION
+    // 7. WHATSAPP CONNECTION
     // =====================================================
 
     const {
@@ -310,8 +332,24 @@ export async function POST(
       );
     }
 
+    if (
+      !connection.phone_number_id ||
+      !connection.access_token
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Phone Number ID ou Access Token manquant.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     // =====================================================
-    // 8. UPLOAD MP3 TO META
+    // 8. UPLOAD OGG TO META
     // =====================================================
 
     const uploadUrl =
@@ -328,13 +366,13 @@ export async function POST(
 
     uploadForm.append(
       "type",
-      "audio/mpeg"
+      "audio/ogg"
     );
 
     uploadForm.append(
       "file",
       file,
-      "casstor-voice.mp3"
+      "casstor-voice.ogg"
     );
 
     console.log(
@@ -359,6 +397,11 @@ export async function POST(
     console.log(
       "Type:",
       file.type
+    );
+
+    console.log(
+      "Normalized type:",
+      normalizedMimeType
     );
 
     console.log(
@@ -455,7 +498,7 @@ export async function POST(
     }
 
     // =====================================================
-    // 9. SEND AUDIO
+    // 9. SEND AUDIO MESSAGE
     // =====================================================
 
     const sendUrl =
@@ -480,6 +523,14 @@ export async function POST(
 
     console.log(
       "===== WHATSAPP AUDIO SEND ====="
+    );
+
+    console.log(
+      JSON.stringify(
+        sendPayload,
+        null,
+        2
+      )
     );
 
     const sendResponse =
@@ -564,7 +615,7 @@ export async function POST(
       null;
 
     // =====================================================
-    // 11. SAVE OUTGOING MESSAGE
+    // 11. SAVE OUTGOING AUDIO
     // =====================================================
 
     const {
@@ -598,7 +649,7 @@ export async function POST(
           mediaId,
 
         media_mime_type:
-          "audio/mpeg",
+          "audio/ogg",
 
         caption:
           null,
@@ -652,7 +703,10 @@ export async function POST(
     const now =
       new Date().toISOString();
 
-    await admin
+    const {
+      error:
+        conversationUpdateError,
+    } = await admin
       .from(
         "whatsapp_conversations"
       )
@@ -667,6 +721,15 @@ export async function POST(
         "id",
         conversation.id
       );
+
+    if (
+      conversationUpdateError
+    ) {
+      console.error(
+        "Conversation update error:",
+        conversationUpdateError
+      );
+    }
 
     // =====================================================
     // 13. SUCCESS

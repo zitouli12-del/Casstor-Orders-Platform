@@ -592,37 +592,28 @@ export default function WhatsAppPage() {
         null
       );
 
-      let mimeType = "";
+      const mimeType =
+        "audio/ogg;codecs=opus";
 
-      const supportedTypes = [
-        "audio/webm;codecs=opus",
-        "audio/webm",
-      ];
-
-      for (
-        const type of supportedTypes
+      if (
+        !MediaRecorder.isTypeSupported(
+          mimeType
+        )
       ) {
-        if (
-          MediaRecorder.isTypeSupported(
-            type
-          )
-        ) {
-          mimeType = type;
-          break;
-        }
+        stopMediaTracks();
+
+        throw new Error(
+          "Votre navigateur ne supporte pas l'enregistrement OGG/Opus. Utilisez Chrome ou Edge à jour."
+        );
       }
 
       const recorder =
-        mimeType
-          ? new MediaRecorder(
-              stream,
-              {
-                mimeType,
-              }
-            )
-          : new MediaRecorder(
-              stream
-            );
+        new MediaRecorder(
+          stream,
+          {
+            mimeType,
+          }
+        );
 
       mediaRecorderRef.current =
         recorder;
@@ -674,7 +665,7 @@ export default function WhatsAppPage() {
       recorder.onstop =
         async () => {
           setConvertingAudio(
-            true
+            false
           );
 
           setRecorderState(
@@ -698,8 +689,7 @@ export default function WhatsAppPage() {
                 chunks,
                 {
                   type:
-                    recorder.mimeType ||
-                    "audio/webm",
+                    "audio/ogg; codecs=opus",
                 }
               );
 
@@ -709,9 +699,14 @@ export default function WhatsAppPage() {
               recordedBlob.size
             );
 
-            const mp3File =
-              await convertBlobToMp3(
-                recordedBlob
+            const audioFile =
+              new File(
+                [recordedBlob],
+                "casstor-voice.ogg",
+                {
+                  type:
+                    "audio/ogg; codecs=opus",
+                }
               );
 
             if (
@@ -724,11 +719,11 @@ export default function WhatsAppPage() {
 
             const previewUrl =
               URL.createObjectURL(
-                mp3File
+                audioFile
               );
 
             setRecordedAudio(
-              mp3File
+              audioFile
             );
 
             setAudioPreviewUrl(
@@ -740,7 +735,7 @@ export default function WhatsAppPage() {
             );
           } catch (error) {
             console.error(
-              "Audio conversion error:",
+              "Audio recording error:",
               error
             );
 
@@ -915,7 +910,7 @@ export default function WhatsAppPage() {
       formData.append(
         "file",
         recordedAudio,
-        "casstor-voice.mp3"
+        "casstor-voice.ogg"
       );
 
       const response =
@@ -978,174 +973,6 @@ export default function WhatsAppPage() {
       );
     } finally {
       setSending(false);
-    }
-  }
-
-  // =====================================================
-  // WEBM → MP3
-  // =====================================================
-
-  async function convertBlobToMp3(
-    blob: Blob
-  ): Promise<File> {
-    const lamejs =
-      await import(
-        "lamejs"
-      );
-
-    const arrayBuffer =
-      await blob.arrayBuffer();
-
-    const AudioContextClass =
-      window.AudioContext ||
-      (
-        window as typeof window & {
-          webkitAudioContext?: typeof AudioContext;
-        }
-      ).webkitAudioContext;
-
-    if (!AudioContextClass) {
-      throw new Error(
-        "AudioContext n'est pas supporté par ce navigateur."
-      );
-    }
-
-    const audioContext =
-      new AudioContextClass();
-
-    try {
-      const audioBuffer =
-        await audioContext.decodeAudioData(
-          arrayBuffer.slice(0)
-        );
-
-      if (
-        audioBuffer.length ===
-        0
-      ) {
-        throw new Error(
-          "L'enregistrement audio est vide."
-        );
-      }
-
-      const sampleRate =
-        audioBuffer.sampleRate;
-
-      const samples =
-        audioBuffer.getChannelData(
-          0
-        );
-
-      const mp3Encoder =
-        new lamejs.Mp3Encoder(
-          1,
-          sampleRate,
-          128
-        );
-
-      const sampleBlockSize =
-        1152;
-
-      const mp3Data: ArrayBuffer[] =
-        [];
-
-      const left =
-        new Int16Array(
-          sampleBlockSize
-        );
-
-      for (
-        let i = 0;
-        i < samples.length;
-        i += sampleBlockSize
-      ) {
-        const sampleCount =
-          Math.min(
-            sampleBlockSize,
-            samples.length - i
-          );
-
-        for (
-          let j = 0;
-          j < sampleCount;
-          j++
-        ) {
-          const sample =
-            Math.max(
-              -1,
-              Math.min(
-                1,
-                samples[
-                  i + j
-                ]
-              )
-            );
-
-          left[j] =
-            sample < 0
-              ? sample * 0x8000
-              : sample * 0x7fff;
-        }
-
-        const mp3Buffer =
-          mp3Encoder.encodeBuffer(
-            left.subarray(
-              0,
-              sampleCount
-            )
-          );
-
-        if (
-          mp3Buffer.length > 0
-        ) {
-          mp3Data.push(
-            new Int8Array(
-              mp3Buffer
-            ).buffer
-          );
-        }
-      }
-
-      const end =
-        mp3Encoder.flush();
-
-      if (
-        end.length > 0
-      ) {
-        mp3Data.push(
-          new Int8Array(
-            end
-          ).buffer
-        );
-      }
-
-      if (
-        mp3Data.length === 0
-      ) {
-        throw new Error(
-          "Impossible de créer le fichier MP3."
-        );
-      }
-
-      const mp3Blob =
-        new Blob(
-          mp3Data,
-          {
-            type:
-              "audio/mpeg",
-          }
-        );
-
-      return new File(
-        [mp3Blob],
-        "casstor-voice.mp3",
-        {
-          type:
-            "audio/mpeg",
-        }
-      );
-    } finally {
-      await audioContext.close();
     }
   }
 
