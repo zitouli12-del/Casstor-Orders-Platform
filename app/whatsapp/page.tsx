@@ -592,27 +592,46 @@ export default function WhatsAppPage() {
         null
       );
 
-      const mimeType =
-        "audio/ogg;codecs=opus";
+      // The native Chrome MediaRecorder does not expose OGG/Opus
+      // on this browser, so use opus-media-recorder as a polyfill.
+      const opusModule =
+        await import("opus-media-recorder");
 
-      if (
-        !MediaRecorder.isTypeSupported(
-          mimeType
-        )
-      ) {
-        stopMediaTracks();
+      const OpusMediaRecorder =
+        opusModule.default;
 
-        throw new Error(
-          "Votre navigateur ne supporte pas l'enregistrement OGG/Opus. Utilisez Chrome ou Edge à jour."
-        );
-      }
+      const workerOptions = {
+        encoderWorkerFactory: () =>
+          new Worker(
+            "/opus-media-recorder/encoderWorker.umd.js"
+          ),
+
+        OggOpusEncoderWasmPath:
+          "/opus-media-recorder/OggOpusEncoder.wasm",
+
+        WebMOpusEncoderWasmPath:
+          "/opus-media-recorder/WebMOpusEncoder.wasm",
+      };
+
+      const RecorderClass =
+        OpusMediaRecorder as unknown as new (
+          stream: MediaStream,
+          options?: MediaRecorderOptions,
+          workerOptions?: {
+            encoderWorkerFactory: () => Worker;
+            OggOpusEncoderWasmPath: string;
+            WebMOpusEncoderWasmPath: string;
+          }
+        ) => MediaRecorder;
 
       const recorder =
-        new MediaRecorder(
+        new RecorderClass(
           stream,
           {
-            mimeType,
-          }
+            mimeType:
+              "audio/ogg",
+          },
+          workerOptions
         );
 
       mediaRecorderRef.current =
@@ -689,7 +708,7 @@ export default function WhatsAppPage() {
                 chunks,
                 {
                   type:
-                    "audio/ogg; codecs=opus",
+                    "audio/ogg",
                 }
               );
 
@@ -705,7 +724,7 @@ export default function WhatsAppPage() {
                 "casstor-voice.ogg",
                 {
                   type:
-                    "audio/ogg; codecs=opus",
+                    "audio/ogg",
                 }
               );
 
