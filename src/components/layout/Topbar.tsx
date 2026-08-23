@@ -1,7 +1,8 @@
 "use client";
 
-import { Menu, Bell, LogOut, Search } from "lucide-react";
+import { Menu, LogOut, Search } from "lucide-react";
 import { supabase } from "@/src/lib/supabase";
+import WhatsAppNotifications from "@/src/components/whatsapp/WhatsAppNotifications";
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -34,13 +35,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       </div>
 
       <div className="flex items-center gap-3">
-        <button className="relative h-10 w-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-100 transition">
-          <Bell size={18} className="text-slate-700" />
-
-          <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-orange-500 text-white text-[10px] flex items-center justify-center">
-            3
-          </span>
-        </button>
+        <WhatsAppNotifications />
 
         <button
           onClick={handleLogout}

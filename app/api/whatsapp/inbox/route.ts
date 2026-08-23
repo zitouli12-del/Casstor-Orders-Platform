@@ -8,8 +8,15 @@ const SUPABASE_URL =
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+const DEFAULT_MESSAGE_LIMIT = 50;
+const MAX_MESSAGE_LIMIT = 100;
+const DEFAULT_MESSAGE_OFFSET = 0;
+
 function getSupabaseAdmin() {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (
+    !SUPABASE_URL ||
+    !SUPABASE_SERVICE_ROLE_KEY
+  ) {
     throw new Error(
       "Supabase environment variables are missing."
     );
@@ -27,7 +34,7 @@ function getSupabaseAdmin() {
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     // -----------------------------------------
     // 1. Authenticated user
@@ -39,7 +46,8 @@ export async function GET() {
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser();
+    } =
+      await supabase.auth.getUser();
 
     if (userError || !user) {
       return NextResponse.json(
@@ -61,11 +69,12 @@ export async function GET() {
     const {
       data: store,
       error: storeError,
-    } = await supabase
-      .from("stores")
-      .select("id")
-      .eq("owner_id", user.id)
-      .single();
+    } =
+      await supabase
+        .from("stores")
+        .select("id")
+        .eq("owner_id", user.id)
+        .single();
 
     if (storeError || !store) {
       return NextResponse.json(
@@ -88,38 +97,78 @@ export async function GET() {
       getSupabaseAdmin();
 
     // -----------------------------------------
-    // 4. Conversations
+    // 4. Query params
+    // -----------------------------------------
+
+    const url = new URL(request.url);
+
+    const conversationIdParam =
+      url.searchParams.get(
+        "conversation_id"
+      );
+
+    const limitParam =
+      Number(
+        url.searchParams.get("limit")
+      );
+
+    const offsetParam =
+      Number(
+        url.searchParams.get("offset")
+      );
+
+    const requestedLimit =
+      Number.isFinite(limitParam) &&
+      limitParam > 0
+        ? Math.floor(limitParam)
+        : DEFAULT_MESSAGE_LIMIT;
+
+    const messageLimit =
+      Math.min(
+        requestedLimit,
+        MAX_MESSAGE_LIMIT
+      );
+
+    const messageOffset =
+      Number.isFinite(offsetParam) &&
+      offsetParam >= 0
+        ? Math.floor(offsetParam)
+        : DEFAULT_MESSAGE_OFFSET;
+
+    // -----------------------------------------
+    // 5. Conversations
     // -----------------------------------------
 
     const {
       data: conversations,
       error: conversationsError,
-    } = await admin
-      .from(
-        "whatsapp_conversations"
-      )
-      .select(`
-        id,
-        store_id,
-        order_id,
-        phone,
-        customer_name,
-        last_message_at,
-        unread_count,
-        created_at,
-        updated_at
-      `)
-      .eq(
-        "store_id",
-        store.id
-      )
-      .order(
-        "last_message_at",
-        {
-          ascending: false,
-          nullsFirst: false,
-        }
-      );
+    } =
+      await admin
+        .from(
+          "whatsapp_conversations"
+        )
+        .select(`
+          id,
+          store_id,
+          order_id,
+          phone,
+          customer_name,
+          last_message_at,
+          unread_count,
+          created_at,
+          updated_at
+        `)
+        .eq(
+          "store_id",
+          store.id
+        )
+        .order(
+          "last_message_at",
+          {
+            ascending: false,
+            nullsFirst: false,
+          }
+        );
 
     if (conversationsError) {
       console.error(
@@ -140,56 +189,112 @@ export async function GET() {
     }
 
     // -----------------------------------------
-    // 5. Messages
+    // 6. Messages
+    //
+    // - Explicit conversation_id => load that chat only.
+    // - Initial Inbox load => preload the first conversation.
+    // - Never load the full history of every conversation.
     // -----------------------------------------
-
-    const conversationIds =
-      (conversations || []).map(
-        (conversation) =>
-          conversation.id
-      );
 
     let messages: any[] = [];
 
+    const targetConversationId =
+      conversationIdParam
+        ? Number(
+            conversationIdParam
+          )
+        : conversations?.[0]?.id ??
+          null;
+
     if (
-      conversationIds.length > 0
+      Number.isInteger(
+        targetConversationId
+      )
     ) {
+      const conversationId =
+        targetConversationId;
+
+      if (
+        !Number.isInteger(
+          conversationId
+        )
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Conversation invalide.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
+      const conversationExists =
+        (conversations || []).some(
+          (conversation) =>
+            conversation.id ===
+            conversationId
+        );
+
+      if (!conversationExists) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Conversation introuvable.",
+          },
+          {
+            status: 404,
+          }
+        );
+      }
+
       const {
         data: messageData,
         error: messagesError,
-      } = await admin
-        .from(
-          "whatsapp_messages"
-        )
-        .select(`
-          id,
-          conversation_id,
-          whatsapp_message_id,
-          direction,
-          message_type,
-          body,
+      } =
+        await admin
+          .from(
+            "whatsapp_messages"
+          )
+          .select(`
+            id,
+            conversation_id,
+            whatsapp_message_id,
+            direction,
+            message_type,
+            body,
 
-          media_id,
-          media_mime_type,
-          caption,
+            media_id,
+            media_mime_type,
+            caption,
 
-          status,
-          created_at
-        `)
-        .eq(
-          "store_id",
-          store.id
-        )
-        .in(
-          "conversation_id",
-          conversationIds
-        )
-        .order(
-          "created_at",
-          {
-            ascending: true,
-          }
-        );
+            status,
+            created_at
+          `)
+          .eq(
+            "store_id",
+            store.id
+          )
+          .eq(
+            "conversation_id",
+            conversationId
+          )
+          .order(
+            "created_at",
+            {
+              ascending: false,
+            }
+          )
+          // Fetch one extra row so the UI can know
+          // whether an older page exists.
+          .range(
+            messageOffset,
+            messageOffset +
+              messageLimit
+          );
 
       if (messagesError) {
         console.error(
@@ -209,12 +314,43 @@ export async function GET() {
         );
       }
 
-      messages =
+      const fetchedMessages =
         messageData || [];
+
+      const hasMoreMessages =
+        fetchedMessages.length >
+        messageLimit;
+
+      const pageMessages =
+        hasMoreMessages
+          ? fetchedMessages.slice(
+              0,
+              messageLimit
+            )
+          : fetchedMessages;
+
+      // The UI expects oldest -> newest.
+      messages =
+        [...pageMessages].reverse();
+
+      return NextResponse.json({
+        success: true,
+        conversations:
+          conversations || [],
+        messages,
+        message_limit:
+          messageLimit,
+        message_offset:
+          messageOffset,
+        has_more_messages:
+          hasMoreMessages,
+        messages_loaded_for:
+          targetConversationId,
+      });
     }
 
     // -----------------------------------------
-    // 6. Success
+    // 7. Success
     // -----------------------------------------
 
     return NextResponse.json({
@@ -222,6 +358,13 @@ export async function GET() {
       conversations:
         conversations || [],
       messages,
+      message_limit:
+        messageLimit,
+      message_offset:
+        messageOffset,
+      has_more_messages: false,
+      messages_loaded_for:
+        targetConversationId,
     });
   } catch (error) {
     console.error(

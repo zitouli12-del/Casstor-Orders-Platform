@@ -11,7 +11,10 @@ const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 function getSupabaseAdmin() {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (
+    !SUPABASE_URL ||
+    !SUPABASE_SERVICE_ROLE_KEY
+  ) {
     throw new Error(
       "Supabase environment variables are missing."
     );
@@ -50,7 +53,8 @@ export async function GET(
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser();
+    } =
+      await supabase.auth.getUser();
 
     if (userError || !user) {
       return new NextResponse(
@@ -63,9 +67,13 @@ export async function GET(
     // 2. Params
     // -----------------------------------------
 
-    const { mediaId } = await params;
+    const { mediaId } =
+      await params;
 
-    if (!mediaId) {
+    const cleanMediaId =
+      mediaId?.trim();
+
+    if (!cleanMediaId) {
       return new NextResponse(
         "Media ID missing",
         { status: 400 }
@@ -79,13 +87,19 @@ export async function GET(
     const {
       data: store,
       error: storeError,
-    } = await supabase
-      .from("stores")
-      .select("id")
-      .eq("owner_id", user.id)
-      .single();
+    } =
+      await supabase
+        .from("stores")
+        .select("id")
+        .eq("owner_id", user.id)
+        .single();
 
     if (storeError || !store) {
+      console.error(
+        "Media store lookup error:",
+        storeError
+      );
+
       return new NextResponse(
         "Store not found",
         { status: 404 }
@@ -96,20 +110,31 @@ export async function GET(
       getSupabaseAdmin();
 
     // -----------------------------------------
-    // 4. Find message + verify ownership
+    // 4. Find media message + ownership
     // -----------------------------------------
+    //
+    // limit(1) makes this safe even if the same
+    // Meta media_id exists more than once in DB.
 
     const {
       data: mediaMessage,
       error: mediaMessageError,
-    } = await admin
-      .from("whatsapp_messages")
-      .select(
-        "id, store_id, media_id, media_mime_type"
-      )
-      .eq("store_id", store.id)
-      .eq("media_id", mediaId)
-      .maybeSingle();
+    } =
+      await admin
+        .from("whatsapp_messages")
+        .select(
+          "id, store_id, media_id, media_mime_type"
+        )
+        .eq(
+          "store_id",
+          store.id
+        )
+        .eq(
+          "media_id",
+          cleanMediaId
+        )
+        .limit(1)
+        .maybeSingle();
 
     if (mediaMessageError) {
       console.error(
@@ -137,14 +162,22 @@ export async function GET(
     const {
       data: connection,
       error: connectionError,
-    } = await admin
-      .from("whatsapp_connections")
-      .select(
-        "phone_number_id, access_token, is_active"
-      )
-      .eq("store_id", store.id)
-      .eq("is_active", true)
-      .maybeSingle();
+    } =
+      await admin
+        .from("whatsapp_connections")
+        .select(
+          "phone_number_id, access_token, is_active"
+        )
+        .eq(
+          "store_id",
+          store.id
+        )
+        .eq(
+          "is_active",
+          true
+        )
+        .limit(1)
+        .maybeSingle();
 
     if (connectionError) {
       console.error(
@@ -158,7 +191,10 @@ export async function GET(
       );
     }
 
-    if (!connection) {
+    if (
+      !connection ||
+      !connection.access_token
+    ) {
       return new NextResponse(
         "WhatsApp connection not found",
         { status: 404 }
@@ -166,23 +202,29 @@ export async function GET(
     }
 
     // -----------------------------------------
-    // 6. Get Meta media URL
+    // 6. Ask Meta for the temporary media URL
     // -----------------------------------------
 
     const mediaInfoUrl =
       `https://graph.facebook.com/${GRAPH_API_VERSION}` +
-      `/${encodeURIComponent(mediaId)}`;
+      `/${encodeURIComponent(
+        cleanMediaId
+      )}`;
 
     const mediaInfoResponse =
-      await fetch(mediaInfoUrl, {
-        method: "GET",
-
-        headers: {
-          Authorization: `Bearer ${connection.access_token}`,
-        },
-
-        cache: "no-store",
-      });
+      await fetch(
+        mediaInfoUrl,
+        {
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${connection.access_token}`,
+            Accept:
+              "application/json",
+          },
+          cache: "no-store",
+        }
+      );
 
     if (!mediaInfoResponse.ok) {
       const errorText =
@@ -190,7 +232,14 @@ export async function GET(
 
       console.error(
         "Meta media info error:",
-        errorText
+        {
+          status:
+            mediaInfoResponse.status,
+          mediaId:
+            cleanMediaId,
+          response:
+            errorText,
+        }
       );
 
       return new NextResponse(
@@ -200,12 +249,24 @@ export async function GET(
     }
 
     const mediaInfo =
-      await mediaInfoResponse.json();
+      (await mediaInfoResponse.json()) as {
+        url?: string;
+        mime_type?: string;
+      };
 
     const mediaUrl =
       mediaInfo?.url;
 
     if (!mediaUrl) {
+      console.error(
+        "Meta media URL missing:",
+        {
+          mediaId:
+            cleanMediaId,
+          mediaInfo,
+        }
+      );
+
       return new NextResponse(
         "Media URL not available",
         { status: 502 }
@@ -213,19 +274,22 @@ export async function GET(
     }
 
     // -----------------------------------------
-    // 7. Download media from Meta
+    // 7. Download the actual media from Meta
     // -----------------------------------------
 
     const mediaResponse =
-      await fetch(mediaUrl, {
-        method: "GET",
-
-        headers: {
-          Authorization: `Bearer ${connection.access_token}`,
-        },
-
-        cache: "no-store",
-      });
+      await fetch(
+        mediaUrl,
+        {
+          method: "GET",
+          headers: {
+            Authorization:
+              `Bearer ${connection.access_token}`,
+            Accept: "*/*",
+          },
+          cache: "no-store",
+        }
+      );
 
     if (!mediaResponse.ok) {
       const errorText =
@@ -233,7 +297,14 @@ export async function GET(
 
       console.error(
         "Meta media download error:",
-        errorText
+        {
+          status:
+            mediaResponse.status,
+          mediaId:
+            cleanMediaId,
+          response:
+            errorText,
+        }
       );
 
       return new NextResponse(
@@ -246,30 +317,42 @@ export async function GET(
       mediaResponse.headers.get(
         "content-type"
       ) ||
+      mediaInfo.mime_type ||
       mediaMessage.media_mime_type ||
       "application/octet-stream";
 
     const buffer =
       await mediaResponse.arrayBuffer();
 
+    if (buffer.byteLength === 0) {
+      console.error(
+        "Meta returned empty media:",
+        cleanMediaId
+      );
+
+      return new NextResponse(
+        "Empty media response",
+        { status: 502 }
+      );
+    }
+
     // -----------------------------------------
-    // 8. Return media
+    // 8. Return media to browser
     // -----------------------------------------
 
     return new NextResponse(
       buffer,
       {
         status: 200,
-
         headers: {
           "Content-Type":
             contentType,
-
-          "Cache-Control":
-            "private, max-age=3600",
-
           "Content-Length":
             String(buffer.byteLength),
+          "Content-Disposition":
+            "inline",
+          "Cache-Control":
+            "private, no-store, max-age=0",
         },
       }
     );

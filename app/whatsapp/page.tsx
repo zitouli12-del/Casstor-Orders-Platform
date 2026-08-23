@@ -7,43 +7,13 @@ import {
   useState,
 } from "react";
 
-import {
-  MessageCircle,
-  Search,
-  Send,
-  Mic,
-  Square,
-  X,
-} from "lucide-react";
+import { MessageCircle } from "lucide-react";
 
-interface Conversation {
-  id: number;
-  phone: string;
-  customer_name: string | null;
-  order_id: number | null;
-  last_message_at: string | null;
-  unread_count: number;
-}
-
-interface WhatsAppMessage {
-  id: number;
-  conversation_id: number;
-  whatsapp_message_id?: string | null;
-
-  direction:
-    | "incoming"
-    | "outgoing";
-
-  message_type: string;
-  body: string | null;
-
-  media_id: string | null;
-  media_mime_type: string | null;
-  caption: string | null;
-
-  status: string | null;
-  created_at: string;
-}
+import { useWhatsAppInbox } from "@/src/components/whatsapp/hooks/useWhatsAppInbox";
+import WhatsAppSidebar from "@/src/components/whatsapp/WhatsAppSidebar";
+import WhatsAppChatHeader from "@/src/components/whatsapp/WhatsAppChatHeader";
+import WhatsAppMessages from "@/src/components/whatsapp/WhatsAppMessages";
+import WhatsAppComposer from "@/src/components/whatsapp/WhatsAppComposer";
 
 type RecorderState =
   | "idle"
@@ -51,32 +21,23 @@ type RecorderState =
   | "preview";
 
 export default function WhatsAppPage() {
-  // =====================================================
-  // BASIC STATE
-  // =====================================================
-
-  const [conversations, setConversations] =
-    useState<Conversation[]>([]);
-
-  const [messages, setMessages] =
-    useState<WhatsAppMessage[]>([]);
-
-  const [
+  const {
+    conversations,
     selectedConversationId,
     setSelectedConversationId,
-  ] = useState<number | null>(null);
+    selectedConversation,
+    selectedMessages,
+    lastMessageByConversation,
+    loading,
+    loadingOlderMessages,
+    hasMoreMessages,
+    loadInbox,
+    loadOlderMessages,
+  } = useWhatsAppInbox();
 
-  const [search, setSearch] =
-    useState("");
-
-  const [newMessage, setNewMessage] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [sending, setSending] =
-    useState(false);
+  const [search, setSearch] = useState("");
+  const [newMessage, setNewMessage] = useState("");
+  const [sending, setSending] = useState(false);
 
   // =====================================================
   // IMAGE STATE
@@ -135,97 +96,6 @@ export default function WhatsAppPage() {
     > | null>(null);
 
   // =====================================================
-  // LOAD INBOX
-  // =====================================================
-
-  async function loadInbox() {
-    try {
-      setLoading(true);
-
-      const response =
-        await fetch(
-          "/api/whatsapp/inbox",
-          {
-            cache: "no-store",
-          }
-        );
-
-      const result =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !result.success
-      ) {
-        throw new Error(
-          result.message ||
-            "Erreur chargement Inbox."
-        );
-      }
-
-      setConversations(
-        result.conversations || []
-      );
-
-      setMessages(
-        result.messages || []
-      );
-
-      setSelectedConversationId(
-        (current) =>
-          current ??
-          result
-            .conversations?.[0]
-            ?.id ??
-          null
-      );
-    } catch (error) {
-      console.error(
-        "Inbox loading error:",
-        error
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadInbox();
-  }, []);
-
-  // =====================================================
-  // SELECTED CONVERSATION
-  // =====================================================
-
-  const selectedConversation =
-    useMemo(
-      () =>
-        conversations.find(
-          (conversation) =>
-            conversation.id ===
-            selectedConversationId
-        ) || null,
-      [
-        conversations,
-        selectedConversationId,
-      ]
-    );
-
-  const selectedMessages =
-    useMemo(
-      () =>
-        messages.filter(
-          (message) =>
-            message.conversation_id ===
-            selectedConversationId
-        ),
-      [
-        messages,
-        selectedConversationId,
-      ]
-    );
-
-  // =====================================================
   // FILTER CONVERSATIONS
   // =====================================================
 
@@ -261,44 +131,13 @@ export default function WhatsAppPage() {
   // FORMAT TIME
   // =====================================================
 
-  function formatTime(
-    value: string | null
-  ) {
-    if (!value) {
-      return "";
-    }
+  function formatTime(value: string | null) {
+    if (!value) return "";
 
-    return new Date(
-      value
-    ).toLocaleTimeString(
-      "fr-FR",
-      {
-        hour: "2-digit",
-        minute: "2-digit",
-      }
-    );
-  }
-
-  function formatRecordingTime(
-    seconds: number
-  ) {
-    const minutes =
-      Math.floor(seconds / 60);
-
-    const remainingSeconds =
-      seconds % 60;
-
-    return `${String(
-      minutes
-    ).padStart(
-      2,
-      "0"
-    )}:${String(
-      remainingSeconds
-    ).padStart(
-      2,
-      "0"
-    )}`;
+    return new Date(value).toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }
 
   // =====================================================
@@ -1020,176 +859,15 @@ export default function WhatsAppPage() {
   return (
     <div className="flex h-[calc(100vh-80px)] min-h-[650px] overflow-hidden rounded-2xl border bg-white shadow-sm">
 
-      {/* ================================================= */}
-      {/* CONVERSATIONS */}
-      {/* ================================================= */}
-
-      <aside className="flex w-[360px] flex-col border-r bg-white">
-
-        <div className="border-b px-5 py-4">
-
-          <div className="mb-4 flex items-center gap-3">
-
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-50 text-green-600">
-              <MessageCircle size={21} />
-            </div>
-
-            <div>
-              <h1 className="text-lg font-semibold text-slate-900">
-                WhatsApp
-              </h1>
-
-              <p className="text-xs text-slate-500">
-                Conversations clients
-              </p>
-            </div>
-
-          </div>
-
-          <div className="relative">
-
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-
-            <input
-              value={
-                search
-              }
-              onChange={(
-                event
-              ) =>
-                setSearch(
-                  event.target.value
-                )
-              }
-              placeholder="Rechercher..."
-              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none transition focus:border-slate-300"
-            />
-
-          </div>
-
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-
-          {loading ? (
-            <div className="p-5 text-sm text-slate-500">
-              Chargement...
-            </div>
-          ) : filteredConversations.length ===
-            0 ? (
-            <div className="flex h-full flex-col items-center justify-center px-6 text-center text-slate-400">
-
-              <MessageCircle
-                size={40}
-                strokeWidth={1.5}
-              />
-
-              <p className="mt-3 text-sm">
-                Aucune conversation
-              </p>
-
-            </div>
-          ) : (
-            filteredConversations.map(
-              (
-                conversation
-              ) => {
-                const lastMessage =
-                  messages
-                    .filter(
-                      (
-                        message
-                      ) =>
-                        message.conversation_id ===
-                        conversation.id
-                    )
-                    .at(-1);
-
-                const active =
-                  conversation.id ===
-                  selectedConversationId;
-
-                return (
-                  <button
-                    key={
-                      conversation.id
-                    }
-                    type="button"
-                    onClick={() =>
-                      setSelectedConversationId(
-                        conversation.id
-                      )
-                    }
-                    className={`flex w-full gap-3 border-b px-5 py-4 text-left transition ${
-                      active
-                        ? "bg-slate-50"
-                        : "hover:bg-slate-50/70"
-                    }`}
-                  >
-
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
-                      {(
-                        conversation.customer_name ||
-                        "?"
-                      )
-                        .slice(
-                          0,
-                          1
-                        )
-                        .toUpperCase()}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-
-                      <div className="flex items-center justify-between gap-2">
-
-                        <span className="truncate text-sm font-semibold text-slate-900">
-                          {
-                            conversation.customer_name ||
-                            conversation.phone
-                          }
-                        </span>
-
-                        <span className="shrink-0 text-[11px] text-slate-400">
-                          {formatTime(
-                            conversation.last_message_at
-                          )}
-                        </span>
-
-                      </div>
-
-                      <div className="mt-1 flex items-center justify-between gap-2">
-
-                        <p className="truncate text-xs text-slate-500">
-                          {lastMessage?.body ||
-                            "Aucun message"}
-                        </p>
-
-                        {conversation.unread_count >
-                          0 && (
-                          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-green-600 px-1.5 text-[10px] font-bold text-white">
-                            {
-                              conversation.unread_count
-                            }
-                          </span>
-                        )}
-
-                      </div>
-
-                    </div>
-
-                  </button>
-                );
-              }
-            )
-          )}
-
-        </div>
-
-      </aside>
+      <WhatsAppSidebar
+        conversations={conversations}
+        selectedConversationId={selectedConversationId}
+        onSelectConversation={setSelectedConversationId}
+        search={search}
+        onSearchChange={setSearch}
+        loading={loading}
+        lastMessageByConversation={lastMessageByConversation}
+      />
 
       {/* ================================================= */}
       {/* CHAT */}
@@ -1219,549 +897,50 @@ export default function WhatsAppPage() {
         ) : (
 
           <>
-            {/* HEADER */}
-
-            <header className="flex items-center justify-between border-b px-6 py-4">
-
-              <div>
-
-                <h2 className="text-sm font-semibold text-slate-900">
-                  {
-                    selectedConversation.customer_name ||
-                    selectedConversation.phone
-                  }
-                </h2>
-
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {
-                    selectedConversation.phone
-                  }
-                </p>
-
-              </div>
-
-              {selectedConversation.order_id && (
-                <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
-                  Commande #
-                  {
-                    selectedConversation.order_id
-                  }
-                </span>
-              )}
-
-            </header>
-
-            {/* MESSAGES */}
-
-            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50/60 px-6 py-6">
-
-              {selectedMessages.length ===
-              0 ? (
-
-                <div className="flex h-full items-center justify-center text-sm text-slate-400">
-                  Aucun message
-                </div>
-
-              ) : (
-
-                selectedMessages.map(
-                  (
-                    message
-                  ) => {
-
-                    const outgoing =
-                      message.direction ===
-                      "outgoing";
-
-                    return (
-                      <div
-                        key={
-                          message.id
-                        }
-                        className={`flex ${
-                          outgoing
-                            ? "justify-end"
-                            : "justify-start"
-                        }`}
-                      >
-
-                        <div
-                          className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                            outgoing
-                              ? "bg-green-600 text-white"
-                              : "border bg-white text-slate-800"
-                          }`}
-                        >
-
-                          {message.message_type ===
-                            "image" &&
-                          message.media_id ? (
-
-                            <div className="space-y-2">
-
-                              <img
-                                src={`/api/whatsapp/media/${encodeURIComponent(
-                                  message.media_id
-                                )}`}
-                                alt={
-                                  message.caption ||
-                                  "WhatsApp image"
-                                }
-                                className="max-h-[420px] max-w-[320px] rounded-xl object-contain"
-                                loading="lazy"
-                              />
-
-                              {message.caption && (
-                                <p className="whitespace-pre-wrap break-words">
-                                  {
-                                    message.caption
-                                  }
-                                </p>
-                              )}
-
-                            </div>
-
-                          ) : message.message_type ===
-                              "audio" &&
-                            message.media_id ? (
-
-                            <div className="space-y-2">
-
-                              <audio
-                                controls
-                                preload="metadata"
-                                className="max-w-full"
-                                src={`/api/whatsapp/media/${encodeURIComponent(
-                                  message.media_id
-                                )}`}
-                              />
-
-                              <p className="text-xs opacity-70">
-                                Message vocal
-                              </p>
-
-                            </div>
-
-                          ) : message.message_type ===
-                              "video" &&
-                            message.media_id ? (
-
-                            <video
-                              controls
-                              preload="metadata"
-                              className="max-h-[420px] max-w-[360px] rounded-xl"
-                              src={`/api/whatsapp/media/${encodeURIComponent(
-                                message.media_id
-                              )}`}
-                            />
-
-                          ) : message.message_type ===
-                              "document" &&
-                            message.media_id ? (
-
-                            <a
-                              href={`/api/whatsapp/media/${encodeURIComponent(
-                                message.media_id
-                              )}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="underline"
-                            >
-                              📄{" "}
-                              {
-                                message.caption ||
-                                "Document"
-                              }
-                            </a>
-
-                          ) : (
-
-                            <p className="whitespace-pre-wrap break-words">
-                              {message.body ||
-                                `[${message.message_type}]`}
-                            </p>
-
-                          )}
-
-                          <div
-                            className={`mt-1 text-[10px] ${
-                              outgoing
-                                ? "text-green-100"
-                                : "text-slate-400"
-                            }`}
-                          >
-                            {formatTime(
-                              message.created_at
-                            )}
-
-                            {outgoing &&
-                              message.status &&
-                              ` · ${message.status}`}
-                          </div>
-
-                        </div>
-
-                      </div>
-                    );
-                  }
-                )
-
-              )}
-
-            </div>
-
-            {/* ================================================= */}
-            {/* COMPOSER */}
-            {/* ================================================= */}
-
-            <div className="border-t bg-white p-4">
-
-              {/* IMAGE PREVIEW */}
-
-              {selectedImage && (
-                <div className="mb-3 flex items-center gap-3 rounded-xl border bg-slate-50 p-3">
-
-                  {imagePreviewUrl && (
-                    <img
-                      src={
-                        imagePreviewUrl
-                      }
-                      alt="Preview"
-                      className="h-20 w-20 rounded-lg object-cover"
-                    />
-                  )}
-
-                  <div className="min-w-0 flex-1">
-
-                    <p className="truncate text-sm font-medium text-slate-700">
-                      {
-                        selectedImage.name
-                      }
-                    </p>
-
-                    <input
-                      value={
-                        imageCaption
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        setImageCaption(
-                          event.target.value
-                        )
-                      }
-                      placeholder="Ajouter une légende..."
-                      className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none"
-                    />
-
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedImage(
-                        null
-                      );
-
-                      setImageCaption(
-                        ""
-                      );
-                    }}
-                    disabled={
-                      sending
-                    }
-                    className="text-xs font-medium text-red-500"
-                  >
-                    Supprimer
-                  </button>
-
-                </div>
-              )}
-
-              {/* AUDIO RECORDING */}
-
-              {recorderState ===
-                "recording" && (
-                <div className="mb-3 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-
-                  <div className="flex items-center gap-3">
-
-                    <div className="h-3 w-3 animate-pulse rounded-full bg-red-500" />
-
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">
-                        Enregistrement en cours
-                      </p>
-
-                      <p className="text-xs text-slate-500">
-                        {
-                          formatRecordingTime(
-                            recordingSeconds
-                          )
-                        }
-                      </p>
-                    </div>
-
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={
-                      stopAudioRecording
-                    }
-                    className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-                  >
-                    <Square
-                      size={15}
-                      fill="currentColor"
-                    />
-
-                    Arrêter
-                  </button>
-
-                </div>
-              )}
-
-              {/* AUDIO CONVERSION */}
-
-              {convertingAudio && (
-                <div className="mb-3 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      Préparation de l'audio...
-                    </p>
-
-                    <p className="text-xs text-slate-500">
-                      Votre enregistrement est en cours de préparation.
-                    </p>
-                  </div>
-
-                </div>
-              )}
-
-              {/* AUDIO PREVIEW */}
-
-              {recorderState ===
-                "preview" &&
-                recordedAudio &&
-                audioPreviewUrl && (
-                <div className="mb-3 rounded-xl border bg-slate-50 p-3">
-
-                  <div className="mb-3 flex items-center justify-between">
-
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">
-                        Audio prêt
-                      </p>
-
-                      <p className="text-xs text-slate-500">
-                        {
-                          formatRecordingTime(
-                            recordingSeconds
-                          )
-                        }
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={
-                        cancelRecordedAudio
-                      }
-                      disabled={
-                        sending
-                      }
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white hover:text-red-500"
-                    >
-                      <X size={18} />
-                    </button>
-
-                  </div>
-
-                  <audio
-                    controls
-                    preload="metadata"
-                    src={
-                      audioPreviewUrl
-                    }
-                    className="w-full"
-                  />
-
-                  <div className="mt-3 flex items-center justify-end gap-2">
-
-                    <button
-                      type="button"
-                      onClick={
-                        cancelRecordedAudio
-                      }
-                      disabled={
-                        sending
-                      }
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                    >
-                      Annuler
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={
-                        handleSendRecordedAudio
-                      }
-                      disabled={
-                        sending
-                      }
-                      className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Send size={15} />
-
-                      {sending
-                        ? "Envoi..."
-                        : "Envoyer"}
-                    </button>
-
-                  </div>
-
-                </div>
-              )}
-
-              {/* NORMAL COMPOSER */}
-
-              {recorderState !==
-                "recording" &&
-                recorderState !==
-                  "preview" &&
-                !convertingAudio && (
-                <div className="flex items-center gap-2">
-
-                  {/* MIC */}
-
-                  <button
-                    type="button"
-                    onClick={
-                      startAudioRecording
-                    }
-                    disabled={
-                      sending ||
-                      !!selectedImage
-                    }
-                    title="Enregistrer un audio"
-                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Mic size={18} />
-                  </button>
-
-                  {/* IMAGE */}
-
-                  <label className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50">
-
-                    📎
-
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png"
-                      className="hidden"
-                      disabled={
-                        sending
-                      }
-                      onChange={(
-                        event
-                      ) => {
-                        const file =
-                          event.target.files?.[0];
-
-                        if (!file) {
-                          return;
-                        }
-
-                        setSelectedImage(
-                          file
-                        );
-
-                        event.currentTarget.value =
-                          "";
-                      }}
-                    />
-
-                  </label>
-
-                  {/* TEXT */}
-
-                  <input
-                    value={
-                      newMessage
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setNewMessage(
-                        event.target.value
-                      )
-                    }
-                    onKeyDown={
-                      handleKeyDown
-                    }
-                    disabled={
-                      sending ||
-                      !!selectedImage
-                    }
-                    placeholder={
-                      selectedImage
-                        ? "Image sélectionnée..."
-                        : "Écrire un message..."
-                    }
-                    className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-
-                  {/* SEND */}
-
-                  {selectedImage ? (
-                    <button
-                      type="button"
-                      onClick={
-                        handleSendImage
-                      }
-                      disabled={
-                        sending
-                      }
-                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Send size={18} />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={
-                        handleSendMessage
-                      }
-                      disabled={
-                        sending ||
-                        !newMessage.trim()
-                      }
-                      className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Send size={18} />
-                    </button>
-                  )}
-
-                </div>
-              )}
-
-              <p className="mt-2 text-[11px] text-slate-400">
-                {recorderState ===
-                "recording"
-                  ? "تكلم دابا ثم اضغط «Arrêter»."
-                  : convertingAudio
-                  ? "Préparation de l'audio..."
-                  : recorderState ===
-                    "preview"
-                  ? "سمع التسجيل قبل ما ترسلو."
-                  : "🎤 تسجيل الصوت · 📎 إرسال صورة · Enter لإرسال النص"}
-              </p>
-
-            </div>
+            <WhatsAppChatHeader conversation={selectedConversation} />
+
+            <WhatsAppMessages
+              messages={selectedMessages}
+              conversationId={
+                selectedConversationId
+              }
+              onLoadOlder={() => {
+                if (selectedConversationId) {
+                  void loadOlderMessages(
+                    selectedConversationId
+                  );
+                }
+              }}
+              hasMoreMessages={
+                hasMoreMessages
+              }
+              loadingOlderMessages={
+                loadingOlderMessages
+              }
+            />
+
+            <WhatsAppComposer
+              selectedImage={selectedImage}
+              setSelectedImage={setSelectedImage}
+              imageCaption={imageCaption}
+              setImageCaption={setImageCaption}
+              imagePreviewUrl={imagePreviewUrl}
+              recorderState={recorderState}
+              convertingAudio={convertingAudio}
+              recordingSeconds={recordingSeconds}
+              recordedAudio={recordedAudio}
+              audioPreviewUrl={audioPreviewUrl}
+              sending={sending}
+              newMessage={newMessage}
+              setNewMessage={setNewMessage}
+              startAudioRecording={startAudioRecording}
+              stopAudioRecording={stopAudioRecording}
+              cancelRecordedAudio={cancelRecordedAudio}
+              handleSendRecordedAudio={handleSendRecordedAudio}
+              handleSendImage={handleSendImage}
+              handleSendMessage={handleSendMessage}
+              handleKeyDown={handleKeyDown}
+            />
           </>
         )}
 
