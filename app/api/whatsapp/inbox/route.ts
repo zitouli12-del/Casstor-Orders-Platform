@@ -10,7 +10,6 @@ const SUPABASE_SERVICE_ROLE_KEY =
 
 const DEFAULT_MESSAGE_LIMIT = 50;
 const MAX_MESSAGE_LIMIT = 100;
-const DEFAULT_MESSAGE_OFFSET = 0;
 
 function getSupabaseAdmin() {
   if (
@@ -112,11 +111,6 @@ export async function GET(request: Request) {
         url.searchParams.get("limit")
       );
 
-    const offsetParam =
-      Number(
-        url.searchParams.get("offset")
-      );
-
     const requestedLimit =
       Number.isFinite(limitParam) &&
       limitParam > 0
@@ -129,11 +123,17 @@ export async function GET(request: Request) {
         MAX_MESSAGE_LIMIT
       );
 
-    const messageOffset =
-      Number.isFinite(offsetParam) &&
-      offsetParam >= 0
-        ? Math.floor(offsetParam)
-        : DEFAULT_MESSAGE_OFFSET;
+    const beforeCreatedAt =
+      url.searchParams.get(
+        "before_created_at"
+      );
+
+    const beforeIdParam =
+      url.searchParams.get("before_id");
+
+    const beforeId = beforeIdParam
+      ? Number(beforeIdParam)
+      : null;
 
     // -----------------------------------------
     // 5. Conversations
@@ -251,50 +251,68 @@ export async function GET(request: Request) {
         );
       }
 
+      let messagesQuery = admin
+        .from(
+          "whatsapp_messages"
+        )
+        .select(`
+          id,
+          conversation_id,
+          whatsapp_message_id,
+          direction,
+          message_type,
+          body,
+
+          media_id,
+          media_mime_type,
+          caption,
+
+          status,
+          created_at
+        `)
+        .eq(
+          "store_id",
+          store.id
+        )
+        .eq(
+          "conversation_id",
+          conversationId
+        );
+
+      if (beforeCreatedAt) {
+        if (!beforeId || !Number.isInteger(beforeId)) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: "Curseur de pagination invalide.",
+            },
+            { status: 400 }
+          );
+        }
+
+        messagesQuery = messagesQuery.or(
+          `created_at.lt.${beforeCreatedAt},and(created_at.eq.${beforeCreatedAt},id.lt.${beforeId})`
+        );
+      }
+
       const {
         data: messageData,
         error: messagesError,
-      } =
-        await admin
-          .from(
-            "whatsapp_messages"
-          )
-          .select(`
-            id,
-            conversation_id,
-            whatsapp_message_id,
-            direction,
-            message_type,
-            body,
-
-            media_id,
-            media_mime_type,
-            caption,
-
-            status,
-            created_at
-          `)
-          .eq(
-            "store_id",
-            store.id
-          )
-          .eq(
-            "conversation_id",
-            conversationId
-          )
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
-          )
-          // Fetch one extra row so the UI can know
-          // whether an older page exists.
-          .range(
-            messageOffset,
-            messageOffset +
-              messageLimit
-          );
+      } = await messagesQuery
+        .order(
+          "created_at",
+          { ascending: false }
+        )
+        .order(
+          "id",
+          { ascending: false }
+        )
+        // Fetch one extra row so the UI can know
+        // whether an older page exists.
+        .range(
+          0,
+          messageLimit
+        );
 
       if (messagesError) {
         console.error(
@@ -333,6 +351,19 @@ export async function GET(request: Request) {
       messages =
         [...pageMessages].reverse();
 
+      const oldestMessage =
+        pageMessages.length > 0
+          ? pageMessages[pageMessages.length - 1]
+          : null;
+
+      const nextCursor =
+        hasMoreMessages && oldestMessage
+          ? {
+              created_at: oldestMessage.created_at,
+              id: oldestMessage.id,
+            }
+          : null;
+
       return NextResponse.json({
         success: true,
         conversations:
@@ -340,10 +371,10 @@ export async function GET(request: Request) {
         messages,
         message_limit:
           messageLimit,
-        message_offset:
-          messageOffset,
         has_more_messages:
           hasMoreMessages,
+        next_cursor:
+          nextCursor,
         messages_loaded_for:
           targetConversationId,
       });
@@ -360,9 +391,8 @@ export async function GET(request: Request) {
       messages,
       message_limit:
         messageLimit,
-      message_offset:
-        messageOffset,
       has_more_messages: false,
+      next_cursor: null,
       messages_loaded_for:
         targetConversationId,
     });

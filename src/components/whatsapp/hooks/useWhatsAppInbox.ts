@@ -61,14 +61,14 @@ export function useWhatsAppInbox() {
   const messagesLoadingRef =
     useRef<number | null>(null);
 
-  // Number of newest records already loaded for the active conversation.
-  // Kept separate from messages.length so Realtime inserts do not change
-  // the pagination offset.
-  const messageOffsetRef =
-    useRef(0);
-
   const initialMessagesLoadedForRef =
     useRef<number | null>(null);
+
+  const olderMessagesCursorRef =
+    useRef<{
+      created_at: string;
+      id: number;
+    } | null>(null);
 
   const sortConversations = useCallback(
     (items: Conversation[]) => {
@@ -178,8 +178,8 @@ export function useWhatsAppInbox() {
               loadedMessages
             );
 
-            messageOffsetRef.current =
-              loadedMessages.length;
+            olderMessagesCursorRef.current =
+              result.next_cursor ?? null;
 
             setHasMoreMessages(
               Boolean(
@@ -271,7 +271,7 @@ export function useWhatsAppInbox() {
 
         setMessages([]);
         setHasMoreMessages(false);
-        messageOffsetRef.current = 0;
+        olderMessagesCursorRef.current = null;
 
         try {
           const params =
@@ -285,11 +285,6 @@ export function useWhatsAppInbox() {
           params.set(
             "limit",
             String(MESSAGE_PAGE_SIZE)
-          );
-
-          params.set(
-            "offset",
-            "0"
           );
 
           const response =
@@ -324,8 +319,8 @@ export function useWhatsAppInbox() {
               loadedMessages
             );
 
-            messageOffsetRef.current =
-              loadedMessages.length;
+            olderMessagesCursorRef.current =
+              result.next_cursor ?? null;
 
             setHasMoreMessages(
               Boolean(
@@ -371,8 +366,13 @@ export function useWhatsAppInbox() {
         setLoadingOlderMessages(true);
 
         try {
-          const offset =
-            messageOffsetRef.current;
+          const cursor =
+            olderMessagesCursorRef.current;
+
+          if (!cursor) {
+            setHasMoreMessages(false);
+            return;
+          }
 
           const params =
             new URLSearchParams();
@@ -388,8 +388,13 @@ export function useWhatsAppInbox() {
           );
 
           params.set(
-            "offset",
-            String(offset)
+            "before_created_at",
+            cursor.created_at
+          );
+
+          params.set(
+            "before_id",
+            String(cursor.id)
           );
 
           const response =
@@ -438,8 +443,8 @@ export function useWhatsAppInbox() {
                       )
                   );
 
-                messageOffsetRef.current +=
-                  olderMessages.length;
+                olderMessagesCursorRef.current =
+                  result.next_cursor ?? null;
 
                 return [
                   ...uniqueOlder,

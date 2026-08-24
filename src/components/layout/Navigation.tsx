@@ -8,6 +8,7 @@ import {
   FileText,
   History,
   MapPinned,
+  MessageCircle,
   Package,
   Settings,
   Truck,
@@ -23,6 +24,11 @@ const links = [
     title: "Historique",
     href: "/historique",
     icon: History,
+  },
+  {
+    title: "WhatsApp",
+    href: "/whatsapp",
+    icon: MessageCircle,
   },
   {
     title: "Suivi des Expéditions",

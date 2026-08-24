@@ -45,15 +45,15 @@ export default function WhatsAppSidebar({
   }, [conversations, search]);
 
   return (
-    <aside className="flex w-[475px] flex-col border-r bg-white">
-      <div className="border-b px-5 py-4">
+    <aside className="flex h-full w-full flex-col border-r bg-white">
+      <div className="border-b px-4 py-4 sm:px-5">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-50 text-green-600">
             <MessageCircle size={21} />
           </div>
           <div>
-            <h1 className="text-[23px] font-semibold text-slate-900">WhatsApp</h1>
-            <p className="text-[15px] text-slate-500">Conversations clients</p>
+            <h1 className="text-[21px] font-semibold text-slate-900 sm:text-[23px]">WhatsApp</h1>
+            <p className="text-[14px] text-slate-500 sm:text-[15px]">Conversations clients</p>
           </div>
         </div>
 
@@ -63,7 +63,7 @@ export default function WhatsAppSidebar({
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder="Rechercher..."
-            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-[17px] outline-none transition focus:border-slate-300"
+            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-[16px] outline-none transition focus:border-slate-300 sm:text-[17px]"
           />
         </div>
       </div>
@@ -86,7 +86,7 @@ export default function WhatsAppSidebar({
                 key={conversation.id}
                 type="button"
                 onClick={() => onSelectConversation(conversation.id)}
-                className={`flex w-full gap-3 border-b px-5 py-4 text-left transition ${
+                className={`flex w-full gap-3 border-b px-4 py-3.5 text-left transition sm:px-5 sm:py-4 ${
                   active
                     ? "bg-slate-100"
                     : "hover:bg-slate-50/70"
@@ -107,7 +107,7 @@ export default function WhatsAppSidebar({
                   </div>
 
                   <div className="mt-1 flex items-center justify-between gap-2">
-                    <p className="truncate text-[15px] text-slate-500">
+                    <p className="truncate text-[14px] text-slate-500 sm:text-[15px]">
                       {lastMessage?.body || "Aucun message"}
                     </p>
                     {conversation.unread_count > 0 && (

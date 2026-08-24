@@ -1,9 +1,32 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { getServerSupabase } from "@/src/lib/server";
 
 const GRAPH_API_VERSION = "v26.0";
 const TEMPLATE_NAME = "missed_call_confirmation";
 const TEMPLATE_LANGUAGE = "ar";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+function getSupabaseAdmin() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "Supabase environment variables are missing."
+    );
+  }
+
+  return createClient(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+}
 
 function normalizeMoroccanPhone(phone: string) {
   let value = phone.replace(/\D/g, "");
@@ -306,19 +329,150 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // 9. WhatsApp connection
+    // 9. WhatsApp conversation
+    //
+    // IMPORTANT: the first WhatsApp template must be stored in the
+    // same conversation history as replies, otherwise a customer
+    // response appears without the message/context we sent first.
     // -----------------------------------------
 
+    const admin = getSupabaseAdmin();
+    const normalizedCustomerPhone = recipientPhone;
+
     const {
-      data: connection,
-      error: connectionError,
-    } = await supabase
-      .from("whatsapp_connections")
-      .select(
-        "id, store_id, phone_number, phone_number_id, waba_id, access_token"
-      )
+      data: existingOrderConversation,
+      error: existingOrderConversationError,
+    } = await admin
+      .from("whatsapp_conversations")
+      .select("id, store_id, order_id, phone, customer_name")
       .eq("store_id", store.id)
+      .eq("order_id", order.id)
       .maybeSingle();
+
+    if (existingOrderConversationError) {
+      console.error(
+        "WhatsApp order conversation lookup error:",
+        existingOrderConversationError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Impossible de vérifier l'historique WhatsApp de la commande.",
+        },
+        { status: 500 }
+      );
+    }
+
+    let conversation = existingOrderConversation;
+
+    if (!conversation) {
+      const {
+        data: phoneConversation,
+        error: phoneConversationError,
+      } = await admin
+        .from("whatsapp_conversations")
+        .select("id, store_id, order_id, phone, customer_name")
+        .eq("store_id", store.id)
+        .eq("phone", normalizedCustomerPhone)
+        .maybeSingle();
+
+      if (phoneConversationError) {
+        console.error(
+          "WhatsApp phone conversation lookup error:",
+          phoneConversationError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Impossible de récupérer la conversation WhatsApp du client.",
+          },
+          { status: 500 }
+        );
+      }
+
+      conversation = phoneConversation;
+    }
+
+    if (!conversation) {
+      const now = new Date().toISOString();
+
+      const {
+        data: createdConversation,
+        error: createConversationError,
+      } = await admin
+        .from("whatsapp_conversations")
+        .insert({
+          store_id: store.id,
+          order_id: order.id,
+          phone: normalizedCustomerPhone,
+          customer_name: order.name,
+          last_message_at: now,
+          unread_count: 0,
+          created_at: now,
+          updated_at: now,
+        })
+        .select(
+          "id, store_id, order_id, phone, customer_name"
+        )
+        .single();
+
+      if (createConversationError || !createdConversation) {
+        console.error(
+          "WhatsApp conversation creation error:",
+          createConversationError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Impossible de créer la conversation WhatsApp.",
+          },
+          { status: 500 }
+        );
+      }
+
+      conversation = createdConversation;
+    }
+
+    // The Stage 1 message is about this specific order, so keep the
+    // conversation linked to the current order for immediate context.
+    const { error: linkOrderError } = await admin
+      .from("whatsapp_conversations")
+      .update({
+        order_id: order.id,
+        customer_name:
+          conversation.customer_name || order.name,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", conversation.id);
+
+    if (linkOrderError) {
+      console.error(
+        "WhatsApp conversation order link error:",
+        linkOrderError
+      );
+    }
+
+    // -----------------------------------------
+    // 10. WhatsApp connection
+    // -----------------------------------------
+
+const {
+  data: connection,
+  error: connectionError,
+} = await supabase
+  .from("whatsapp_connections")
+  .select(
+    "id, store_id, phone_number, phone_number_id, waba_id, access_token, is_active"
+  )
+  .eq("store_id", store.id)
+  .eq("is_active", true)
+  .maybeSingle();
 
     if (connectionError) {
       console.error(
@@ -361,7 +515,7 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // 10. Logs
+    // 11. Logs
     // -----------------------------------------
 
     console.log("======================================");
@@ -384,7 +538,7 @@ export async function POST(request: Request) {
     console.log("======================================");
 
     // -----------------------------------------
-    // 11. Meta WhatsApp API
+    // 12. Meta WhatsApp API
     // -----------------------------------------
 
     const url =
@@ -449,7 +603,7 @@ export async function POST(request: Request) {
     });
 
     // -----------------------------------------
-    // 12. Read Meta response
+    // 13. Read Meta response
     // -----------------------------------------
 
     const responseText = await metaResponse.text();
@@ -475,7 +629,7 @@ export async function POST(request: Request) {
     console.log("=========================");
 
     // -----------------------------------------
-    // 13. Meta error
+    // 14. Meta error
     // -----------------------------------------
 
     if (!metaResponse.ok) {
@@ -503,20 +657,93 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // 14. Success
+    // 15. Save outgoing template message + success
     // -----------------------------------------
+
+    const whatsappMessageId =
+      metaData &&
+      typeof metaData === "object" &&
+      "messages" in metaData &&
+      Array.isArray((metaData as any).messages)
+        ? (metaData as any).messages?.[0]?.id || null
+        : null;
+
+    const now = new Date().toISOString();
+
+    const templateBody = `مرحباً ${String(order.name).trim()} 👋\n\nأنا أيوب من فريق Casstor.\n\nحاولنا الاتصال بكم لتأكيد طلبكم، لكن لم نتمكن من التواصل معكم هاتفياً.\n\n📦 المرجو الرد على هذه الرسالة لتأكيد طلبكم، وسنعمل على شحنه إليكم في أقرب وقت.\n\nشكراً لثقتكم بنا 🙏`;
+
+    const {
+      data: savedMessage,
+      error: saveMessageError,
+    } = await admin
+      .from("whatsapp_messages")
+      .insert({
+        conversation_id: conversation.id,
+        store_id: store.id,
+        whatsapp_message_id: whatsappMessageId,
+        direction: "outgoing",
+        message_type: "template",
+        body: templateBody,
+        media_id: null,
+        media_mime_type: "image/jpeg",
+        // Pour un template avec image, on conserve l'URL exacte de la
+        // variante dans `caption` afin que l'Inbox puisse reconstruire
+        // visuellement le header image du template sans ajouter de colonne DB.
+        caption: variant.image_url,
+        status: "sent",
+        created_at: now,
+      })
+      .select(
+        "id, conversation_id, whatsapp_message_id, direction, message_type, body, media_id, media_mime_type, caption, status, created_at"
+      )
+      .single();
+
+    if (saveMessageError) {
+      console.error(
+        "Outgoing WhatsApp template save error:",
+        saveMessageError
+      );
+
+      return NextResponse.json({
+        success: true,
+        warning:
+          "Message WhatsApp envoyé, mais impossible de l'enregistrer dans l'historique.",
+        order_id: order.id,
+        conversation_id: conversation.id,
+        recipient: recipientPhone,
+        whatsapp_message_id: whatsappMessageId,
+        meta_response: metaData,
+      });
+    }
+
+    const { error: conversationUpdateError } = await admin
+      .from("whatsapp_conversations")
+      .update({
+        order_id: conversation.order_id || order.id,
+        customer_name: conversation.customer_name || order.name,
+        last_message_at: now,
+        updated_at: now,
+      })
+      .eq("id", conversation.id);
+
+    if (conversationUpdateError) {
+      console.error(
+        "WhatsApp conversation update after send error:",
+        conversationUpdateError
+      );
+    }
 
     return NextResponse.json({
       success: true,
-
       message:
-        "Template WhatsApp envoyé avec succès.",
-
+        "Template WhatsApp envoyé et enregistré dans l'historique.",
       order_id: order.id,
-
+      conversation_id: conversation.id,
       recipient: recipientPhone,
-
       customer_name: order.name,
+      whatsapp_message_id: whatsappMessageId,
+      saved_message: savedMessage,
+      meta_response: metaData,
 
       product: order.product,
 
@@ -529,8 +756,6 @@ export async function POST(request: Request) {
       image_url: variant.image_url,
 
       template: TEMPLATE_NAME,
-
-      meta_response: metaData,
     });
   } catch (error) {
     console.error(

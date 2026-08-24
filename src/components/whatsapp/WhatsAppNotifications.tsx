@@ -409,26 +409,26 @@ export default function WhatsAppNotifications() {
 
       const channel = supabase
         .channel(`whatsapp-notifications-${store.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "whatsapp_messages",
-            filter: `store_id=eq.${store.id}`,
-          },
-          handleRealtimeMessage
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "whatsapp_conversations",
-            filter: `store_id=eq.${store.id}`,
-          },
-          scheduleRefresh
-        )
+.on(
+  "postgres_changes",
+  {
+    event: "INSERT",
+    schema: "public",
+    table: "whatsapp_messages",
+    filter: `store_id=eq.${store.id}`,
+  },
+  handleRealtimeMessage
+)
+.on(
+  "postgres_changes",
+  {
+    event: "UPDATE",
+    schema: "public",
+    table: "whatsapp_conversations",
+    filter: `store_id=eq.${store.id}`,
+  },
+  scheduleRefresh
+)
         .subscribe((status) => {
           if (status === "SUBSCRIBED") {
             console.log(

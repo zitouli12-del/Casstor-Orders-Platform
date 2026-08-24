@@ -857,27 +857,45 @@ export default function WhatsAppPage() {
   // =====================================================
 
   return (
-    <div className="flex h-[calc(100vh-80px)] min-h-[650px] overflow-hidden rounded-2xl border bg-white shadow-sm">
+    <div className="flex h-[calc(100vh-80px)] min-h-[560px] overflow-hidden rounded-2xl border bg-white shadow-sm">
 
-      <WhatsAppSidebar
-        conversations={conversations}
-        selectedConversationId={selectedConversationId}
-        onSelectConversation={setSelectedConversationId}
-        search={search}
-        onSearchChange={setSearch}
-        loading={loading}
-        lastMessageByConversation={lastMessageByConversation}
-      />
+      <div
+        className={
+          `h-full w-full shrink-0 md:flex md:w-[475px] ${
+            selectedConversationId !== null
+              ? "hidden"
+              : "flex"
+          }`
+        }
+      >
+        <WhatsAppSidebar
+          conversations={conversations}
+          selectedConversationId={selectedConversationId}
+          onSelectConversation={setSelectedConversationId}
+          search={search}
+          onSearchChange={setSearch}
+          loading={loading}
+          lastMessageByConversation={lastMessageByConversation}
+        />
+      </div>
 
       {/* ================================================= */}
       {/* CHAT */}
       {/* ================================================= */}
 
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section
+        className={
+          `min-w-0 flex-1 flex-col ${
+            selectedConversationId !== null
+              ? "flex"
+              : "hidden md:flex"
+          }`
+        }
+      >
 
         {!selectedConversation ? (
 
-          <div className="flex h-full flex-col items-center justify-center text-center text-slate-400">
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center text-slate-400">
 
             <MessageCircle
               size={50}
@@ -897,7 +915,10 @@ export default function WhatsAppPage() {
         ) : (
 
           <>
-            <WhatsAppChatHeader conversation={selectedConversation} />
+            <WhatsAppChatHeader
+              conversation={selectedConversation}
+              onBack={() => setSelectedConversationId(null)}
+            />
 
             <WhatsAppMessages
               messages={selectedMessages}

@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, CheckCheck } from "lucide-react";
+
 import type { WhatsAppMessage } from "@/src/components/whatsapp/hooks/useWhatsAppInbox";
 
 interface WhatsAppMessageBubbleProps {
@@ -40,9 +41,7 @@ function renderMessageStatus(status: string | null) {
             ? "text-sky-500"
             : "text-slate-500"
         }`}
-        aria-label={
-          status === "read" ? "Lu" : "Livré"
-        }
+        aria-label={status === "read" ? "Lu" : "Livré"}
       />
     );
   }
@@ -65,8 +64,24 @@ function renderMessageStatus(status: string | null) {
 export default function WhatsAppMessageBubble({
   message,
 }: WhatsAppMessageBubbleProps) {
-  const outgoing =
-    message.direction === "outgoing";
+  const outgoing = message.direction === "outgoing";
+
+  // Stage 1:
+  // Les templates sont stockés avec message_type = "template"
+  // et l'URL exacte de l'image du variant dans "caption".
+  const templateImageUrl =
+    message.message_type === "template" &&
+    message.caption &&
+    /^https?:\/\//i.test(message.caption)
+      ? message.caption
+      : null;
+
+  const isImage =
+    message.message_type === "image" &&
+    Boolean(message.media_id);
+
+  const isTemplateWithImage =
+    Boolean(templateImageUrl);
 
   const bubbleClass = outgoing
     ? "rounded-2xl rounded-br-md bg-[#d9fdd3] text-slate-800"
@@ -75,45 +90,67 @@ export default function WhatsAppMessageBubble({
   return (
     <div
       className={`flex ${
-        outgoing
-          ? "justify-end"
-          : "justify-start"
+        outgoing ? "justify-end" : "justify-start"
       }`}
     >
       <div
         className={`max-w-[78%] overflow-hidden ${bubbleClass} ${
-          message.message_type === "image"
+          isImage || isTemplateWithImage
             ? "p-1.5"
             : message.message_type === "audio"
             ? "w-[340px] max-w-[88%] px-3 py-2.5"
             : "px-3.5 py-2.5"
         } shadow-[0_1px_1px_rgba(0,0,0,0.08)] md:max-w-[72%]`}
       >
-        {message.message_type ===
-          "image" &&
-        message.media_id ? (
+        {/* ================================================= */}
+        {/* STAGE 1 TEMPLATE + PRODUCT IMAGE                  */}
+        {/* ================================================= */}
+        {isTemplateWithImage ? (
+          <div className="space-y-2">
+            <img
+              src={templateImageUrl!}
+              alt="Image du produit envoyé au client"
+              className="block max-h-[420px] w-full max-w-[360px] rounded-xl object-contain"
+              loading="lazy"
+            />
+
+            {message.body && (
+              <p
+                dir="rtl"
+                className="whitespace-pre-wrap break-words px-1.5 pb-0.5 text-right text-[17px] font-semibold leading-7"
+              >
+                {message.body}
+              </p>
+            )}
+          </div>
+        ) : isImage ? (
+          /* ================================================= */
+          /* IMAGE MESSAGE                                    */
+          /* ================================================= */
           <div className="space-y-1.5">
             <img
               src={`/api/whatsapp/media/${encodeURIComponent(
-                message.media_id
+                message.media_id as string
               )}`}
-              alt={
-                message.caption ||
-                "WhatsApp image"
-              }
+              alt={message.caption || "WhatsApp image"}
               className="block max-h-[420px] w-full max-w-[360px] rounded-xl object-contain"
               loading="lazy"
             />
 
             {message.caption && (
-              <p className="whitespace-pre-wrap break-words px-1.5 pb-0.5 text-[17px] leading-relaxed">
+              <p
+                dir="rtl"
+                className="whitespace-pre-wrap break-words px-1.5 pb-0.5 text-right text-[17px] font-semibold leading-7"
+              >
                 {message.caption}
               </p>
             )}
           </div>
-        ) : message.message_type ===
-            "audio" &&
+        ) : message.message_type === "audio" &&
           message.media_id ? (
+          /* ================================================= */
+          /* AUDIO MESSAGE                                    */
+          /* ================================================= */
           <div>
             <audio
               controls
@@ -124,9 +161,11 @@ export default function WhatsAppMessageBubble({
               )}`}
             />
           </div>
-        ) : message.message_type ===
-            "video" &&
+        ) : message.message_type === "video" &&
           message.media_id ? (
+          /* ================================================= */
+          /* VIDEO MESSAGE                                    */
+          /* ================================================= */
           <video
             controls
             preload="metadata"
@@ -135,9 +174,11 @@ export default function WhatsAppMessageBubble({
               message.media_id
             )}`}
           />
-        ) : message.message_type ===
-            "document" &&
+        ) : message.message_type === "document" &&
           message.media_id ? (
+          /* ================================================= */
+          /* DOCUMENT MESSAGE                                 */
+          /* ================================================= */
           <a
             href={`/api/whatsapp/media/${encodeURIComponent(
               message.media_id
@@ -146,33 +187,32 @@ export default function WhatsAppMessageBubble({
             rel="noreferrer"
             className="block break-words underline"
           >
-            {message.caption ||
-              "Document"}
+            {message.caption || "Document"}
           </a>
         ) : (
-          <p className="whitespace-pre-wrap break-words text-[17px] leading-relaxed">
-            {message.body ||
-              `[${message.message_type}]`}
+          /* ================================================= */
+          /* TEXT MESSAGE                                     */
+          /* ================================================= */
+          <p
+            dir="rtl"
+            className="whitespace-pre-wrap break-words text-right text-[17px] font-semibold leading-7"
+          >
+            {message.body || `[${message.message_type}]`}
           </p>
         )}
 
+        {/* ================================================= */}
+        {/* TIME + MESSAGE STATUS                             */}
+        {/* ================================================= */}
         <div
           className={`mt-1 flex items-center justify-end gap-0.5 text-[9px] leading-none ${
-            outgoing
-              ? "text-slate-600"
-              : "text-slate-400"
+            outgoing ? "text-slate-600" : "text-slate-400"
           }`}
         >
-          <span>
-            {formatTime(
-              message.created_at
-            )}
-          </span>
+          <span>{formatTime(message.created_at)}</span>
 
           {outgoing &&
-            renderMessageStatus(
-              message.status
-            )}
+            renderMessageStatus(message.status)}
         </div>
       </div>
     </div>
