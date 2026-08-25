@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { prepareWhatsAppStockAlternativeRequest } from "../../../src/services/whatsapp/prepareWhatsAppStockAlternativeRequest";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -105,6 +106,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
+
+    let stockAlternativesState: string = "disabled";
+
+    // Stage 1 (technical): detect stock alternatives and create a pending
+    // request. WhatsApp sending will be added only after this logic is tested.
+    try {
+      const automationResult = await prepareWhatsAppStockAlternativeRequest(
+        supabase,
+        {
+          id: order.id,
+          store_id: keyData.store_id,
+          product: order.product,
+          color: order.color,
+          size: order.size,
+        }
+      );
+
+      stockAlternativesState = automationResult.state;
+
+      if (automationResult.state === "failed") {
+        console.error(
+          "WhatsApp Stock Alternatives preparation failed:",
+          automationResult.reason
+        );
+      }
+    } catch (automationError) {
+      console.error(
+        "WhatsApp Stock Alternatives unexpected error:",
+        automationError
+      );
+      stockAlternativesState = "failed";
+    }
+
     await supabase
       .from("api_keys")
       .update({
@@ -117,6 +151,7 @@ export async function POST(request: NextRequest) {
         success: true,
         order_id: order.id,
         store_id: keyData.store_id,
+        stock_alternatives: stockAlternativesState,
       },
       {
         headers: corsHeaders,
