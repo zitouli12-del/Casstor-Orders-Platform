@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  handleWhatsAppStockAlternativeSelection,
+} from "../../../../src/services/whatsapp/handleWhatsAppStockAlternativeSelection";
+
 const VERIFY_TOKEN =
   process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
 
@@ -18,6 +22,11 @@ type WhatsAppMessage = {
 
   text?: {
     body?: string;
+  };
+
+  button?: {
+    text?: string;
+    payload?: string;
   };
 
   image?: {
@@ -113,6 +122,12 @@ function getMessageBody(
   switch (message.type) {
     case "text":
       return message.text?.body || null;
+
+    case "button":
+      return (
+        message.button?.text ||
+        "[Button]"
+      );
 
     case "image":
       return (
@@ -907,6 +922,40 @@ export async function POST(
             console.log(
               "Unread count updated:",
               newUnreadCount
+            );
+          }
+
+          // ==================================================
+          // 10. STOCK ALTERNATIVE QUICK REPLY
+          // ==================================================
+
+          if (
+            message.type === "button" &&
+            typeof message.button?.payload === "string" &&
+            message.button.payload.startsWith("stock_alt:")
+          ) {
+            console.log(
+              "===== STOCK ALTERNATIVE BUTTON RECEIVED ====="
+            );
+
+            console.log(
+              "Payload:",
+              message.button.payload
+            );
+
+            const selectionResult =
+              await handleWhatsAppStockAlternativeSelection(
+                supabase,
+                {
+                  storeId: Number(storeId),
+                  conversationId: Number(conversationId),
+                  payload: message.button.payload,
+                }
+              );
+
+            console.log(
+              "Stock Alternative selection result:",
+              selectionResult
             );
           }
 
