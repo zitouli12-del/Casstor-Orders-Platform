@@ -1,6 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  after,
+  NextRequest,
+  NextResponse,
+} from "next/server";
+
 import { createClient } from "@supabase/supabase-js";
-import { prepareWhatsAppStockAlternativeRequest } from "../../../src/services/whatsapp/prepareWhatsAppStockAlternativeRequest";
+
+import {
+  prepareWhatsAppStockAlternativeRequest,
+} from "../../../src/services/whatsapp/prepareWhatsAppStockAlternativeRequest";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,9 +17,15 @@ const supabase = createClient(
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, x-api-key",
+  "Access-Control-Allow-Methods":
+    "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, x-api-key",
 };
+
+// =====================================================
+// OPTIONS
+// =====================================================
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -19,6 +33,10 @@ export async function OPTIONS() {
     headers: corsHeaders,
   });
 }
+
+// =====================================================
+// GET
+// =====================================================
 
 export async function GET() {
   return NextResponse.json(
@@ -32,13 +50,27 @@ export async function GET() {
   );
 }
 
-export async function POST(request: NextRequest) {
+// =====================================================
+// POST
+// =====================================================
+
+export async function POST(
+  request: NextRequest
+) {
   try {
-    const apiKey = request.headers.get("x-api-key");
+    // =================================================
+    // 1. API KEY
+    // =================================================
+
+    const apiKey =
+      request.headers.get("x-api-key");
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "API key missing" },
+        {
+          success: false,
+          error: "API key missing",
+        },
         {
           status: 401,
           headers: corsHeaders,
@@ -46,15 +78,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: keyData, error: keyError } = await supabase
+    // =================================================
+    // 2. FIND STORE
+    // =================================================
+
+    const {
+      data: keyData,
+      error: keyError,
+    } = await supabase
       .from("api_keys")
-      .select("store_id, is_active")
-      .eq("api_key", apiKey)
+      .select(
+        "store_id, is_active"
+      )
+      .eq(
+        "api_key",
+        apiKey
+      )
       .single();
 
-    if (keyError || !keyData || !keyData.is_active) {
+    if (
+      keyError ||
+      !keyData ||
+      !keyData.is_active
+    ) {
       return NextResponse.json(
-        { error: "Invalid API key" },
+        {
+          success: false,
+          error: "Invalid API key",
+        },
         {
           status: 401,
           headers: corsHeaders,
@@ -62,43 +113,71 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    
+    // =================================================
+    // 3. REQUEST BODY
+    // =================================================
+
+    const body =
+      await request.json();
+
     const {
-    product,
-    name,
-    phone,
-    city,
-    address,
-    color,
-    size,
-    price,
-    source,
-} = body;
+      product,
+      name,
+      phone,
+      city,
+      address,
+      color,
+      size,
+      price,
+      source,
+    } = body;
 
-    const { data: order, error: orderError } = await supabase
+    // =================================================
+    // 4. CREATE ORDER
+    // =================================================
+
+    const {
+      data: order,
+      error: orderError,
+    } = await supabase
       .from("orders")
-    
       .insert({
-  store_id: keyData.store_id,
-  product,
-  name,
-  phone,
-  city,
-  address,
-  color,
-  size,
-  price,
-  status: "nouvelle",
-  source,
-})
+        store_id:
+          keyData.store_id,
 
+        product,
+        name,
+        phone,
+        city,
+        address,
+        color,
+        size,
+        price,
+
+        status:
+          "nouvelle",
+
+        source,
+      })
       .select()
       .single();
 
-    if (orderError) {
+    if (
+      orderError ||
+      !order
+    ) {
+      console.error(
+        "Order creation failed:",
+        orderError
+      );
+
       return NextResponse.json(
-        { error: orderError.message },
+        {
+          success: false,
+          error:
+            orderError?.message ||
+            "Order creation failed",
+        },
         {
           status: 500,
           headers: corsHeaders,
@@ -106,62 +185,164 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log(
+      "===== ORDER CREATED ====="
+    );
 
-    let stockAlternativesState: string = "disabled";
+    console.log({
+      order_id:
+        order.id,
 
-    // Stage 1 (technical): detect stock alternatives and create a pending
-    // request. WhatsApp sending will be added only after this logic is tested.
-    try {
-      const automationResult = await prepareWhatsAppStockAlternativeRequest(
-        supabase,
-        {
-          id: order.id,
-          store_id: keyData.store_id,
-          product: order.product,
-          color: order.color,
-          size: order.size,
+      store_id:
+        keyData.store_id,
+
+      product:
+        order.product,
+
+      color:
+        order.color,
+
+      size:
+        order.size,
+    });
+
+    // =================================================
+    // 5. BACKGROUND TASKS
+    //
+    // IMPORTANT:
+    // The Landing Page does NOT wait for WhatsApp.
+    // Order success is returned immediately.
+    // =================================================
+
+    after(async () => {
+      // -----------------------------------------------
+      // WhatsApp Stock Alternatives
+      // -----------------------------------------------
+
+      try {
+        const automationResult =
+          await prepareWhatsAppStockAlternativeRequest(
+            supabase,
+            {
+              id:
+                Number(order.id),
+
+              store_id:
+                Number(
+                  keyData.store_id
+                ),
+
+              product:
+                order.product,
+
+              color:
+                order.color,
+
+              size:
+                order.size,
+            }
+          );
+
+        console.log(
+          "===== WHATSAPP STOCK ALTERNATIVES RESULT ====="
+        );
+
+        console.log({
+          order_id:
+            order.id,
+
+          result:
+            automationResult,
+        });
+
+        if (
+          automationResult.state ===
+          "failed"
+        ) {
+          console.error(
+            "WhatsApp Stock Alternatives failed:",
+            automationResult.reason
+          );
         }
-      );
-
-      stockAlternativesState = automationResult.state;
-
-      if (automationResult.state === "failed") {
+      } catch (
+        automationError
+      ) {
         console.error(
-          "WhatsApp Stock Alternatives preparation failed:",
-          automationResult.reason
+          "WhatsApp Stock Alternatives unexpected error:",
+          automationError
         );
       }
-    } catch (automationError) {
-      console.error(
-        "WhatsApp Stock Alternatives unexpected error:",
-        automationError
-      );
-      stockAlternativesState = "failed";
-    }
 
-    await supabase
-      .from("api_keys")
-      .update({
-        last_used_at: new Date().toISOString(),
-      })
-      .eq("api_key", apiKey);
+      // -----------------------------------------------
+      // API KEY LAST USED
+      // -----------------------------------------------
+
+      try {
+        const {
+          error:
+            apiKeyUpdateError,
+        } = await supabase
+          .from("api_keys")
+          .update({
+            last_used_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "api_key",
+            apiKey
+          );
+
+        if (
+          apiKeyUpdateError
+        ) {
+          console.error(
+            "API key last_used_at update failed:",
+            apiKeyUpdateError
+          );
+        }
+      } catch (
+        apiKeyUpdateException
+      ) {
+        console.error(
+          "API key update unexpected error:",
+          apiKeyUpdateException
+        );
+      }
+    });
+
+    // =================================================
+    // 6. RETURN SUCCESS IMMEDIATELY
+    // =================================================
 
     return NextResponse.json(
       {
         success: true,
-        order_id: order.id,
-        store_id: keyData.store_id,
-        stock_alternatives: stockAlternativesState,
+
+        order_id:
+          order.id,
+
+        store_id:
+          keyData.store_id,
+
+        stock_alternatives:
+          "scheduled",
       },
       {
+        status: 200,
         headers: corsHeaders,
       }
     );
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Orders API unexpected error:",
+      error
+    );
 
     return NextResponse.json(
-      { error: "Server error" },
+      {
+        success: false,
+        error: "Server error",
+      },
       {
         status: 500,
         headers: corsHeaders,
