@@ -17,6 +17,7 @@ type SelectionResult =
         | "invalid_payload"
         | "request_not_found"
         | "request_not_pending"
+        | "automation_disabled"
         | "variant_not_allowed"
         | "order_already_changed"
         | "order_size_changed"
@@ -158,7 +159,64 @@ export async function handleWhatsAppStockAlternativeSelection(
     }
 
     // =====================================================
-    // 4. VARIANT MUST BELONG TO THE OPTIONS SENT
+    // 4. RECHECK STORE AUTOMATION SETTING
+    //
+    // The Settings page is the master switch for the whole
+    // Stock Alternatives flow. If the user disables the
+    // feature after the message was sent, an old button must
+    // not be able to change the order.
+    // =====================================================
+
+    const {
+      data: settings,
+      error: settingsError,
+    } = await admin
+      .from(
+        "whatsapp_automation_settings"
+      )
+      .select(
+        "stock_alternatives_enabled"
+      )
+      .eq(
+        "store_id",
+        params.storeId
+      )
+      .maybeSingle();
+
+    if (settingsError) {
+      console.error(
+        "Stock Alternatives settings recheck failed:",
+        settingsError
+      );
+
+      return {
+        state: "failed",
+        reason:
+          "settings_lookup_failed",
+      };
+    }
+
+    if (
+      !settings?.stock_alternatives_enabled
+    ) {
+      console.log(
+        "Stock Alternatives automation is disabled. Ignoring button:",
+        {
+          requestId,
+          storeId:
+            params.storeId,
+        }
+      );
+
+      return {
+        state: "ignored",
+        reason:
+          "automation_disabled",
+      };
+    }
+
+    // =====================================================
+    // 5. VARIANT MUST BELONG TO THE OPTIONS SENT
     // =====================================================
 
     const allowedVariantIds =
@@ -256,18 +314,9 @@ export async function handleWhatsAppStockAlternativeSelection(
         order.shipping_stage
       );
 
-    const blockedStatuses =
-      new Set([
-        "annulé",
-        "annule",
-        "doublon",
-        "hors-confirmation",
-      ]);
-
     if (
-      blockedStatuses.has(
-        normalizedStatus
-      ) ||
+      normalizedStatus !==
+        "nouvelle" ||
       normalizedShippingStage ===
         "sent"
     ) {
