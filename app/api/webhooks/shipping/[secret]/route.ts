@@ -1,6 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+import {
+  after,
+  NextRequest,
+  NextResponse,
+} from "next/server";
+
 import { createClient } from "@supabase/supabase-js";
+
 import { parseOzonNote } from "@/src/services/shipping/webhook/ozon/parseNote";
+
+import { triggerWhatsAppShippingAutomation } from "@/src/services/whatsapp/triggerWhatsAppShippingAutomation";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,7 +23,10 @@ const supabase = createClient(
  * not shipment statuses, so they are intentionally
  * NOT included here.
  */
-const OZON_WEBHOOK_STATUS_MAP: Record<string, string> = {
+const OZON_WEBHOOK_STATUS_MAP: Record<
+  string,
+  string
+> = {
   NEW_PARCEL: "Nouveau Colis",
   WAITING_PICKUP: "Attente De Ramassage",
   PICKED_UP: "Ramassé",
@@ -38,22 +49,37 @@ const OZON_WEBHOOK_STATUS_MAP: Record<string, string> = {
   DEPLA: "pas réponse +déplacement",
   REMBOURSED: "Remboursé",
   SENT_TO_AGENCY: "Envoyé à l'agence",
-  RECEIVED_IN_AGENCY: "Reçu En Agence De Livraison",
-  NOANSWER_DAY_2: "Pas de réponse J+2",
-  NOANSWER_DAY_3: "Pas de réponse J+3",
-  DEPLA_DAY_2: "pas réponse + déplacement J+2",
-  DEPLA_DAY_3: "pas réponse + déplacement J+3",
-  BAM_SEIZED: "Saisi par Barid Al-Maghrib",
-  PRE_PICKED_UP: "Pré ramassé",
-  DAMAGED: "Endommagé",
-  VLMN: "Retard Livraison 48h-72h",
-  SCTR: "Hors Secteur",
-  NCVRT: "Zone Non-couverte",
-  DECLINED: "Refusé",
+  RECEIVED_IN_AGENCY:
+    "Reçu En Agence De Livraison",
+  NOANSWER_DAY_2:
+    "Pas de réponse J+2",
+  NOANSWER_DAY_3:
+    "Pas de réponse J+3",
+  DEPLA_DAY_2:
+    "pas réponse + déplacement J+2",
+  DEPLA_DAY_3:
+    "pas réponse + déplacement J+3",
+  BAM_SEIZED:
+    "Saisi par Barid Al-Maghrib",
+  PRE_PICKED_UP:
+    "Pré ramassé",
+  DAMAGED:
+    "Endommagé",
+  VLMN:
+    "Retard Livraison 48h-72h",
+  SCTR:
+    "Hors Secteur",
+  NCVRT:
+    "Zone Non-couverte",
+  DECLINED:
+    "Refusé",
 };
 
 function normalizeValue(
-  value: string | null | undefined
+  value:
+    | string
+    | null
+    | undefined
 ): string {
   return String(value ?? "")
     .trim()
@@ -62,59 +88,90 @@ function normalizeValue(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ secret: string }> }
+  {
+    params,
+  }: {
+    params: Promise<{
+      secret: string;
+    }>;
+  }
 ) {
   try {
-    const { secret } = await params;
+    const {
+      secret,
+    } = await params;
 
     // --------------------------------------------------
     // 1. Find provider using webhook secret
     // --------------------------------------------------
-    const { data: provider, error: providerError } =
-      await supabase
-        .from("shipping_providers")
-        .select(`
-          id,
-          store_id,
-          provider_code,
-          provider_name,
-          webhook_secret,
-          webhook_enabled
-        `)
-        .eq("webhook_secret", secret)
-        .eq("webhook_enabled", true)
-        .single();
 
-    if (providerError || !provider) {
+    const {
+      data: provider,
+      error: providerError,
+    } = await supabase
+      .from(
+        "shipping_providers"
+      )
+      .select(`
+        id,
+        store_id,
+        provider_code,
+        provider_name,
+        webhook_secret,
+        webhook_enabled
+      `)
+      .eq(
+        "webhook_secret",
+        secret
+      )
+      .eq(
+        "webhook_enabled",
+        true
+      )
+      .single();
+
+    if (
+      providerError ||
+      !provider
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid webhook",
+          error:
+            "Invalid webhook",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
     // --------------------------------------------------
     // 2. Read Ozon payload
     // --------------------------------------------------
-    const body = await request.json();
+
+    const body =
+      await request.json();
 
     console.log(
       "========== SHIPPING WEBHOOK =========="
     );
+
     console.log(
       "Provider:",
       provider.provider_name
     );
+
     console.log(
       "Store ID:",
       provider.store_id
     );
+
     console.log(
       "Webhook body:",
       body
     );
+
     console.log(
       "======================================"
     );
@@ -122,7 +179,11 @@ export async function POST(
     // --------------------------------------------------
     // 3. Only process Ozon for now
     // --------------------------------------------------
-    if (provider.provider_code !== "ozon") {
+
+    if (
+      provider.provider_code !==
+      "ozon"
+    ) {
       return NextResponse.json({
         success: true,
         message:
@@ -130,32 +191,59 @@ export async function POST(
       });
     }
 
-    const orderId = body?.orderId;
-    const orderStatus = body?.orderStatus;
-    const situation = body?.situation;
-    const note = body?.note ?? "";
+    const orderId =
+      body?.orderId;
+
+    const orderStatus =
+      body?.orderStatus;
+
+    const situation =
+      body?.situation;
+
+    const note =
+      body?.note ?? "";
 
     // --------------------------------------------------
     // 4. Save raw webhook event first
     // --------------------------------------------------
+
     const {
       data: webhookEvent,
       error: webhookError,
     } = await supabase
-      .from("shipping_webhook_events")
+      .from(
+        "shipping_webhook_events"
+      )
       .insert({
-        provider_id: provider.id,
-        store_id: provider.store_id,
-        order_id: orderId ?? null,
-        order_status: orderStatus ?? null,
-        situation: situation ?? null,
-        note: note || null,
-        payload: body,
+        provider_id:
+          provider.id,
+
+        store_id:
+          provider.store_id,
+
+        order_id:
+          orderId ?? null,
+
+        order_status:
+          orderStatus ?? null,
+
+        situation:
+          situation ?? null,
+
+        note:
+          note || null,
+
+        payload:
+          body,
       })
-      .select("id")
+      .select(
+        "id"
+      )
       .single();
 
-    if (webhookError) {
+    if (
+      webhookError
+    ) {
       console.error(
         "WEBHOOK EVENT INSERT ERROR:",
         webhookError
@@ -167,13 +255,16 @@ export async function POST(
           error:
             "Failed to save webhook event",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
     // --------------------------------------------------
     // 5. orderId is the Ozon tracking number
     // --------------------------------------------------
+
     if (!orderId) {
       console.log(
         "Webhook has no orderId"
@@ -182,20 +273,25 @@ export async function POST(
       return NextResponse.json({
         success: true,
         processed: false,
-        reason: "Missing orderId",
+        reason:
+          "Missing orderId",
       });
     }
 
     // --------------------------------------------------
     // 6. Find shipment using tracking number + store
     // --------------------------------------------------
+
     const {
       data: shipment,
       error: shipmentError,
     } = await supabase
-      .from("shipping")
+      .from(
+        "shipping"
+      )
       .select(`
         id,
+        order_id,
         tracking_number,
         store_id,
         shipping_status,
@@ -214,7 +310,9 @@ export async function POST(
       )
       .maybeSingle();
 
-    if (shipmentError) {
+    if (
+      shipmentError
+    ) {
       console.error(
         "SHIPMENT SEARCH ERROR:",
         shipmentError
@@ -226,7 +324,9 @@ export async function POST(
           error:
             "Failed to find shipment",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
@@ -241,15 +341,19 @@ export async function POST(
         processed: false,
         reason:
           "Shipment not found",
-        trackingNumber: orderId,
+        trackingNumber:
+          orderId,
       });
     }
 
     // --------------------------------------------------
     // 7. Parse note
     // --------------------------------------------------
+
     const parsedNote =
-      parseOzonNote(note);
+      parseOzonNote(
+        note
+      );
 
     console.log(
       "Parsed Note:",
@@ -259,10 +363,15 @@ export async function POST(
     // --------------------------------------------------
     // 8. Resolve webhook status
     // --------------------------------------------------
+
     const normalizedOrderStatus =
-      orderStatus !== undefined &&
-      orderStatus !== null
-        ? String(orderStatus)
+      orderStatus !==
+        undefined &&
+      orderStatus !==
+        null
+        ? String(
+            orderStatus
+          )
             .trim()
             .toUpperCase()
         : "";
@@ -287,8 +396,11 @@ export async function POST(
     // --------------------------------------------------
     // 9. Check if shipment status actually changed
     // --------------------------------------------------
+
     const statusChanged =
-      Boolean(mappedWebhookStatus) &&
+      Boolean(
+        mappedWebhookStatus
+      ) &&
       normalizeValue(
         shipment.shipping_status
       ) !==
@@ -302,11 +414,14 @@ export async function POST(
         webhookStatus:
           normalizedOrderStatus ||
           null,
+
         mappedStatus:
           mappedWebhookStatus ??
           null,
+
         currentStatus:
           shipment.shipping_status,
+
         statusChanged,
       }
     );
@@ -314,10 +429,12 @@ export async function POST(
     // --------------------------------------------------
     // 10. Prepare update
     // --------------------------------------------------
-    const updateData: Record<
-      string,
-      unknown
-    > = {};
+
+    const updateData:
+      Record<
+        string,
+        unknown
+      > = {};
 
     // --------------------------------------------------
     // 10.1 Update shipment status
@@ -329,10 +446,9 @@ export async function POST(
     // Unknown status is NEVER written
     // to shipping_status.
     // --------------------------------------------------
-    if (
-      statusChanged &&
-      mappedWebhookStatus
-    ) {
+
+if (mappedWebhookStatus) {
+  
       updateData.shipping_status =
         mappedWebhookStatus;
     }
@@ -340,19 +456,26 @@ export async function POST(
     // --------------------------------------------------
     // 10.2 Update situation only if received
     // --------------------------------------------------
+
     if (
-      situation !== undefined &&
-      situation !== null &&
-      String(situation)
-        .trim() !== ""
+      situation !==
+        undefined &&
+      situation !==
+        null &&
+      String(
+        situation
+      ).trim() !== ""
     ) {
       updateData.shipping_situation =
-        String(situation);
+        String(
+          situation
+        );
     }
 
     // --------------------------------------------------
     // 10.3 Courier information
     // --------------------------------------------------
+
     if (
       parsedNote.type ===
       "courier"
@@ -375,10 +498,14 @@ export async function POST(
     // --------------------------------------------------
     // 10.4 Normal shipping note
     // --------------------------------------------------
+
     if (
-      parsedNote.type === "note"
+      parsedNote.type ===
+      "note"
     ) {
-      if (parsedNote.note) {
+      if (
+        parsedNote.note
+      ) {
         updateData.shipping_note =
           parsedNote.note;
       }
@@ -394,20 +521,31 @@ export async function POST(
     // --------------------------------------------------
 
     // Always update last synchronization time
+
     updateData.last_sync_at =
       new Date().toISOString();
 
     // --------------------------------------------------
     // 11. Update shipping
     // --------------------------------------------------
+
     const {
       error: updateError,
     } = await supabase
-      .from("shipping")
-      .update(updateData)
-      .eq("id", shipment.id);
+      .from(
+        "shipping"
+      )
+      .update(
+        updateData
+      )
+      .eq(
+        "id",
+        shipment.id
+      );
 
-    if (updateError) {
+    if (
+      updateError
+    ) {
       console.error(
         "SHIPPING UPDATE ERROR:",
         updateError
@@ -419,7 +557,9 @@ export async function POST(
           error:
             "Failed to update shipment",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
@@ -432,7 +572,9 @@ export async function POST(
     // Situation/note/courier changes alone
     // do NOT create a fake status transition.
     // --------------------------------------------------
-    let historySaved = false;
+
+    let historySaved =
+      false;
 
     if (
       statusChanged &&
@@ -440,7 +582,8 @@ export async function POST(
     ) {
       try {
         const {
-          error: historyError,
+          error:
+            historyError,
         } = await supabase
           .from(
             "shipping_status_history"
@@ -448,19 +591,26 @@ export async function POST(
           .insert({
             shipping_id:
               shipment.id,
+
             old_status:
               shipment.shipping_status,
+
             new_status:
               mappedWebhookStatus,
+
             situation:
-              situation !== undefined &&
-              situation !== null &&
-              String(situation)
-                .trim() !== ""
+              situation !==
+                undefined &&
+              situation !==
+                null &&
+              String(
+                situation
+              ).trim() !== ""
                 ? String(
                     situation
                   )
                 : shipment.shipping_situation,
+
             note:
               parsedNote.type ===
                 "note" &&
@@ -469,15 +619,20 @@ export async function POST(
                 : shipment.shipping_note,
           });
 
-        if (historyError) {
+        if (
+          historyError
+        ) {
           console.error(
             "WEBHOOK SAVE HISTORY ERROR:",
             historyError
           );
         } else {
-          historySaved = true;
+          historySaved =
+            true;
         }
-      } catch (historyError) {
+      } catch (
+        historyError
+      ) {
         console.error(
           "WEBHOOK SAVE HISTORY ERROR:",
           historyError
@@ -491,10 +646,14 @@ export async function POST(
     // --------------------------------------------------
     // 13. Mark webhook event as processed
     // --------------------------------------------------
+
     const {
-      error: processedError,
+      error:
+        processedError,
     } = await supabase
-      .from("shipping_webhook_events")
+      .from(
+        "shipping_webhook_events"
+      )
       .update({
         processed_at:
           new Date().toISOString(),
@@ -504,7 +663,9 @@ export async function POST(
         webhookEvent.id
       );
 
-    if (processedError) {
+    if (
+      processedError
+    ) {
       console.error(
         "WEBHOOK PROCESSED UPDATE ERROR:",
         processedError
@@ -512,8 +673,76 @@ export async function POST(
     }
 
     // --------------------------------------------------
-    // 14. Logs
+    // 14. WhatsApp shipping automations
+    //
+    // IMPORTANT:
+    //
+    // We do NOT trigger WhatsApp directly from
+    // the raw Ozon payload.
+    //
+    // The shipment has already been validated,
+    // mapped and updated in Casstor.
+    //
+    // Only a REAL Casstor status change reaches
+    // the generic WhatsApp automation trigger.
+    //
+    // The generic trigger decides whether:
+    // - this status has an automation
+    // - the automation is enabled
+    // - a run already exists
     // --------------------------------------------------
+
+    if (
+      statusChanged &&
+      mappedWebhookStatus
+    ) {
+      after(
+        async () => {
+          try {
+            const automationResult =
+              await triggerWhatsAppShippingAutomation(
+                supabase,
+                {
+                  storeId:
+                    Number(
+                      provider.store_id
+                    ),
+
+                  shippingId:
+                    Number(
+                      shipment.id
+                    ),
+
+                  orderId:
+                    Number(
+                      shipment.order_id
+                    ),
+
+                  status:
+                    mappedWebhookStatus,
+                }
+              );
+
+            console.log(
+              "Shipping WhatsApp automation result:",
+              automationResult
+            );
+          } catch (
+            automationError
+          ) {
+            console.error(
+              "Shipping WhatsApp automation error:",
+              automationError
+            );
+          }
+        }
+      );
+    }
+
+    // --------------------------------------------------
+    // 15. Logs
+    // --------------------------------------------------
+
     console.log(
       "========== WEBHOOK PROCESSED =========="
     );
@@ -575,23 +804,36 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
+
       processed: true,
-      shipmentId: shipment.id,
-      trackingNumber: orderId,
+
+      shipmentId:
+        shipment.id,
+
+      trackingNumber:
+        orderId,
+
       status: {
         received:
           normalizedOrderStatus ||
           null,
+
         mapped:
           mappedWebhookStatus ??
           null,
+
         changed:
           statusChanged,
+
         historySaved,
       },
-      updated: updateData,
+
+      updated:
+        updateData,
     });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "WEBHOOK ERROR:",
       error
@@ -600,10 +842,13 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
+
         error:
           "Webhook processing error",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
