@@ -2,12 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sendWhatsAppRefusedFeedback } from "./sendWhatsAppRefusedFeedback";
 import { sendWhatsAppCancelledFeedback } from "./sendWhatsAppCancelledFeedback";
+import { sendWhatsAppDeliveryNoAnswer } from "./sendWhatsAppDeliveryNoAnswer";
 
 const MAX_ATTEMPTS = 3;
 
 type AutomationKey =
   | "refused_feedback"
-  | "cancelled_feedback";
+  | "cancelled_feedback"
+  | "delivery_no_answer_initial"
+  | "delivery_no_answer_followup";
 
 type TriggerResult =
   | {
@@ -163,6 +166,66 @@ async function executeAutomation(
     };
   }
 
+  // =====================================================
+  // DELIVERY NO ANSWER
+  // =====================================================
+
+  if (
+    params.automationKey ===
+      "delivery_no_answer_initial" ||
+    params.automationKey ===
+      "delivery_no_answer_followup"
+  ) {
+    const sendResult =
+      await sendWhatsAppDeliveryNoAnswer(
+        admin,
+        params.runId
+      );
+
+    console.log(
+      "Delivery No Answer automation result:",
+      sendResult
+    );
+
+    if (
+      sendResult.state ===
+      "sent"
+    ) {
+      return {
+        state: "sent",
+        automation_key:
+          params.automationKey,
+        run_id:
+          params.runId,
+      };
+    }
+
+    if (
+      sendResult.state ===
+      "ignored"
+    ) {
+      return {
+        state: "ignored",
+        reason:
+          sendResult.reason,
+        automation_key:
+          params.automationKey,
+        run_id:
+          params.runId,
+      };
+    }
+
+    return {
+      state: "failed",
+      reason:
+        sendResult.reason,
+      automation_key:
+        params.automationKey,
+      run_id:
+        params.runId,
+    };
+  }
+
   return {
     state: "ignored",
     reason:
@@ -205,10 +268,13 @@ export async function triggerWhatsAppShippingAutomation(
     // Annulé
     // -> cancelled_feedback
     //
-    // Future:
+    // Pas de réponse + SMS
+    // pas réponse +déplacement
+    // -> delivery_no_answer_initial
     //
-    // Pas de réponse
-    // -> delivery_no_answer
+    // Pas de réponse J+2 / J+3
+    // pas réponse + déplacement J+2 / J+3
+    // -> delivery_no_answer_followup
     //
     // =====================================================
 
@@ -234,6 +300,40 @@ export async function triggerWhatsAppShippingAutomation(
     ) {
       automationKey =
         "cancelled_feedback";
+    }
+
+    const initialNoAnswerStatuses = [
+      "Pas de réponse + SMS",
+      "pas réponse +déplacement",
+    ];
+
+    const followupNoAnswerStatuses = [
+      "Pas de réponse J+2",
+      "Pas de réponse J+3",
+      "pas réponse + déplacement J+2",
+      "pas réponse + déplacement J+3",
+    ];
+
+    if (
+      initialNoAnswerStatuses.some(
+        (status) =>
+          normalizeValue(status) ===
+          normalizedStatus
+      )
+    ) {
+      automationKey =
+        "delivery_no_answer_initial";
+    }
+
+    if (
+      followupNoAnswerStatuses.some(
+        (status) =>
+          normalizeValue(status) ===
+          normalizedStatus
+      )
+    ) {
+      automationKey =
+        "delivery_no_answer_followup";
     }
 
     if (!automationKey) {
@@ -335,6 +435,57 @@ export async function triggerWhatsAppShippingAutomation(
       if (
         !settings
           ?.cancelled_feedback_enabled
+      ) {
+        return {
+          state: "ignored",
+          reason:
+            "automation_disabled",
+          automation_key:
+            automationKey,
+        };
+      }
+    }
+
+    if (
+      automationKey ===
+        "delivery_no_answer_initial" ||
+      automationKey ===
+        "delivery_no_answer_followup"
+    ) {
+      const {
+        data: settings,
+        error: settingsError,
+      } = await admin
+        .from(
+          "whatsapp_automation_settings"
+        )
+        .select(
+          "delivery_no_answer_enabled"
+        )
+        .eq(
+          "store_id",
+          params.storeId
+        )
+        .maybeSingle();
+
+      if (settingsError) {
+        console.error(
+          "Shipping WhatsApp delivery no answer settings lookup failed:",
+          settingsError
+        );
+
+        return {
+          state: "failed",
+          reason:
+            "settings_lookup_failed",
+          automation_key:
+            automationKey,
+        };
+      }
+
+      if (
+        !settings
+          ?.delivery_no_answer_enabled
       ) {
         return {
           state: "ignored",

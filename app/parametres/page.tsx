@@ -18,6 +18,7 @@ interface AutomationSettings {
   stock_alternatives_enabled: boolean;
   refused_feedback_enabled: boolean;
   cancelled_feedback_enabled: boolean;
+  delivery_no_answer_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -41,6 +42,11 @@ export default function ParametresPage() {
     setCancelledFeedbackEnabled,
   ] = useState(false);
 
+  const [
+    deliveryNoAnswerEnabled,
+    setDeliveryNoAnswerEnabled,
+  ] = useState(false);
+
   const [loading, setLoading] =
     useState(true);
 
@@ -57,6 +63,11 @@ export default function ParametresPage() {
   const [
     savingCancelledFeedback,
     setSavingCancelledFeedback,
+  ] = useState(false);
+
+  const [
+    savingDeliveryNoAnswer,
+    setSavingDeliveryNoAnswer,
   ] = useState(false);
 
   const [message, setMessage] =
@@ -128,6 +139,7 @@ export default function ParametresPage() {
           stock_alternatives_enabled,
           refused_feedback_enabled,
           cancelled_feedback_enabled,
+          delivery_no_answer_enabled,
           created_at,
           updated_at
         `)
@@ -161,6 +173,12 @@ export default function ParametresPage() {
             data.cancelled_feedback_enabled
           )
         );
+
+        setDeliveryNoAnswerEnabled(
+          Boolean(
+            data.delivery_no_answer_enabled
+          )
+        );
       } else {
         setSettings(null);
 
@@ -173,6 +191,10 @@ export default function ParametresPage() {
         );
 
         setCancelledFeedbackEnabled(
+          false
+        );
+
+        setDeliveryNoAnswerEnabled(
           false
         );
       }
@@ -240,6 +262,7 @@ export default function ParametresPage() {
           stock_alternatives_enabled,
           refused_feedback_enabled,
           cancelled_feedback_enabled,
+          delivery_no_answer_enabled,
           created_at,
           updated_at
         `)
@@ -266,6 +289,12 @@ export default function ParametresPage() {
       setCancelledFeedbackEnabled(
         Boolean(
           data.cancelled_feedback_enabled
+        )
+      );
+
+      setDeliveryNoAnswerEnabled(
+        Boolean(
+          data.delivery_no_answer_enabled
         )
       );
 
@@ -340,6 +369,7 @@ export default function ParametresPage() {
           stock_alternatives_enabled,
           refused_feedback_enabled,
           cancelled_feedback_enabled,
+          delivery_no_answer_enabled,
           created_at,
           updated_at
         `)
@@ -366,6 +396,12 @@ export default function ParametresPage() {
       setCancelledFeedbackEnabled(
         Boolean(
           data.cancelled_feedback_enabled
+        )
+      );
+
+      setDeliveryNoAnswerEnabled(
+        Boolean(
+          data.delivery_no_answer_enabled
         )
       );
 
@@ -440,6 +476,7 @@ export default function ParametresPage() {
           stock_alternatives_enabled,
           refused_feedback_enabled,
           cancelled_feedback_enabled,
+          delivery_no_answer_enabled,
           created_at,
           updated_at
         `)
@@ -469,6 +506,12 @@ export default function ParametresPage() {
         )
       );
 
+      setDeliveryNoAnswerEnabled(
+        Boolean(
+          data.delivery_no_answer_enabled
+        )
+      );
+
       setMessage(
         nextValue
           ? "Avis après annulation activé."
@@ -487,6 +530,113 @@ export default function ParametresPage() {
       );
     } finally {
       setSavingCancelledFeedback(
+        false
+      );
+    }
+  }
+
+  async function toggleDeliveryNoAnswer() {
+    if (savingDeliveryNoAnswer) {
+      return;
+    }
+
+    try {
+      setSavingDeliveryNoAnswer(
+        true
+      );
+
+      setMessage(null);
+      setError(null);
+
+      const storeId =
+        await getCurrentStoreId();
+
+      const nextValue =
+        !deliveryNoAnswerEnabled;
+
+      const {
+        data,
+        error: upsertError,
+      } = await supabase
+        .from(
+          "whatsapp_automation_settings"
+        )
+        .upsert(
+          {
+            store_id:
+              storeId,
+
+            delivery_no_answer_enabled:
+              nextValue,
+
+            updated_at:
+              new Date().toISOString(),
+          },
+          {
+            onConflict:
+              "store_id",
+          }
+        )
+        .select(`
+          id,
+          store_id,
+          stock_alternatives_enabled,
+          refused_feedback_enabled,
+          cancelled_feedback_enabled,
+          delivery_no_answer_enabled,
+          created_at,
+          updated_at
+        `)
+        .single();
+
+      if (upsertError) {
+        throw upsertError;
+      }
+
+      setSettings(data);
+
+      setStockAlternativesEnabled(
+        Boolean(
+          data.stock_alternatives_enabled
+        )
+      );
+
+      setRefusedFeedbackEnabled(
+        Boolean(
+          data.refused_feedback_enabled
+        )
+      );
+
+      setCancelledFeedbackEnabled(
+        Boolean(
+          data.cancelled_feedback_enabled
+        )
+      );
+
+      setDeliveryNoAnswerEnabled(
+        Boolean(
+          data.delivery_no_answer_enabled
+        )
+      );
+
+      setMessage(
+        nextValue
+          ? "Relance après absence de réponse activée."
+          : "Relance après absence de réponse désactivée."
+      );
+    } catch (err) {
+      console.error(
+        "Erreur sauvegarde Delivery No Answer:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Impossible d'enregistrer le paramètre."
+      );
+    } finally {
+      setSavingDeliveryNoAnswer(
         false
       );
     }
@@ -844,6 +994,96 @@ export default function ParametresPage() {
                 {savingCancelledFeedback
                   ? "Enregistrement..."
                   : cancelledFeedbackEnabled
+                    ? "Désactiver"
+                    : "Activer"}
+              </button>
+
+            </div>
+
+            {/* PAS DE RÉPONSE */}
+
+            <div className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 sm:flex-row sm:items-center sm:justify-between">
+
+              <div className="min-w-0">
+
+                <div className="flex items-center gap-3">
+
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                      deliveryNoAnswerEnabled
+                        ? "bg-emerald-50 text-emerald-600"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    <MessageCircle
+                      size={19}
+                    />
+                  </div>
+
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 sm:text-lg">
+                      Relance après absence de réponse
+                    </h3>
+
+                    <p
+                      className={`mt-1 text-xs font-semibold ${
+                        deliveryNoAnswerEnabled
+                          ? "text-emerald-600"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {deliveryNoAnswerEnabled
+                        ? "Activée"
+                        : "Désactivée"}
+                    </p>
+                  </div>
+
+                </div>
+
+                <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
+                  Lorsqu&apos;une expédition
+                  passe à un statut Pas de
+                  réponse, le système pourra
+                  contacter automatiquement
+                  le client sur WhatsApp afin
+                  de faciliter la prise de
+                  contact avec le livreur et
+                  la livraison du colis.
+                </p>
+
+                <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-500">
+                  <strong className="text-slate-700">
+                    Fonctionnement :
+                  </strong>{" "}
+                  un premier message est prévu
+                  lors du premier échec de
+                  contact, puis une seule
+                  relance de suivi pour les
+                  statuts J+2 / J+3. Les
+                  protections anti-doublon
+                  restent appliquées.
+                </div>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  toggleDeliveryNoAnswer
+                }
+                disabled={
+                  loading ||
+                  savingDeliveryNoAnswer
+                }
+                className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl px-5 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  deliveryNoAnswerEnabled
+                    ? "bg-slate-900 text-white hover:bg-slate-800"
+                    : "bg-emerald-600 text-white hover:bg-emerald-700"
+                }`}
+              >
+                {savingDeliveryNoAnswer
+                  ? "Enregistrement..."
+                  : deliveryNoAnswerEnabled
                     ? "Désactiver"
                     : "Activer"}
               </button>
