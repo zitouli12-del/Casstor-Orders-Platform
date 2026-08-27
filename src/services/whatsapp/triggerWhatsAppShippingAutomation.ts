@@ -1,11 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sendWhatsAppRefusedFeedback } from "./sendWhatsAppRefusedFeedback";
+import { sendWhatsAppCancelledFeedback } from "./sendWhatsAppCancelledFeedback";
 
 const MAX_ATTEMPTS = 3;
 
 type AutomationKey =
-  | "refused_feedback";
+  | "refused_feedback"
+  | "cancelled_feedback";
 
 type TriggerResult =
   | {
@@ -45,6 +47,10 @@ async function executeAutomation(
     automationKey: AutomationKey;
   }
 ): Promise<TriggerResult> {
+  // =====================================================
+  // REFUSED FEEDBACK
+  // =====================================================
+
   if (
     params.automationKey ===
     "refused_feedback"
@@ -57,6 +63,64 @@ async function executeAutomation(
 
     console.log(
       "Refused Feedback automation result:",
+      sendResult
+    );
+
+    if (
+      sendResult.state ===
+      "sent"
+    ) {
+      return {
+        state: "sent",
+        automation_key:
+          params.automationKey,
+        run_id:
+          params.runId,
+      };
+    }
+
+    if (
+      sendResult.state ===
+      "ignored"
+    ) {
+      return {
+        state: "ignored",
+        reason:
+          sendResult.reason,
+        automation_key:
+          params.automationKey,
+        run_id:
+          params.runId,
+      };
+    }
+
+    return {
+      state: "failed",
+      reason:
+        sendResult.reason,
+      automation_key:
+        params.automationKey,
+      run_id:
+        params.runId,
+    };
+  }
+
+  // =====================================================
+  // CANCELLED FEEDBACK
+  // =====================================================
+
+  if (
+    params.automationKey ===
+    "cancelled_feedback"
+  ) {
+    const sendResult =
+      await sendWhatsAppCancelledFeedback(
+        admin,
+        params.runId
+      );
+
+    console.log(
+      "Cancelled Feedback automation result:",
       sendResult
     );
 
@@ -133,13 +197,18 @@ export async function triggerWhatsAppShippingAutomation(
     // 1. RESOLVE AUTOMATION FROM CASSTOR STATUS
     // =====================================================
     //
+    // Current:
+    //
+    // Refusé
+    // -> refused_feedback
+    //
+    // Annulé
+    // -> cancelled_feedback
+    //
     // Future:
     //
     // Pas de réponse
     // -> delivery_no_answer
-    //
-    // Annulé
-    // -> delivery_cancelled
     //
     // =====================================================
 
@@ -155,6 +224,16 @@ export async function triggerWhatsAppShippingAutomation(
     ) {
       automationKey =
         "refused_feedback";
+    }
+
+    if (
+      normalizedStatus ===
+      normalizeValue(
+        "Annulé"
+      )
+    ) {
+      automationKey =
+        "cancelled_feedback";
     }
 
     if (!automationKey) {
@@ -191,7 +270,7 @@ export async function triggerWhatsAppShippingAutomation(
 
       if (settingsError) {
         console.error(
-          "Shipping WhatsApp settings lookup failed:",
+          "Shipping WhatsApp refused feedback settings lookup failed:",
           settingsError
         );
 
@@ -218,13 +297,63 @@ export async function triggerWhatsAppShippingAutomation(
       }
     }
 
+    if (
+      automationKey ===
+      "cancelled_feedback"
+    ) {
+      const {
+        data: settings,
+        error: settingsError,
+      } = await admin
+        .from(
+          "whatsapp_automation_settings"
+        )
+        .select(
+          "cancelled_feedback_enabled"
+        )
+        .eq(
+          "store_id",
+          params.storeId
+        )
+        .maybeSingle();
+
+      if (settingsError) {
+        console.error(
+          "Shipping WhatsApp cancelled feedback settings lookup failed:",
+          settingsError
+        );
+
+        return {
+          state: "failed",
+          reason:
+            "settings_lookup_failed",
+          automation_key:
+            automationKey,
+        };
+      }
+
+      if (
+        !settings
+          ?.cancelled_feedback_enabled
+      ) {
+        return {
+          state: "ignored",
+          reason:
+            "automation_disabled",
+          automation_key:
+            automationKey,
+        };
+      }
+    }
+
     // =====================================================
     // 3. VERIFY CURRENT SHIPMENT STATE
     // =====================================================
     //
     // Never trust only the old webhook event.
-    // The shipment must STILL have the status
-    // that triggered the automation.
+    //
+    // The shipment must STILL have the same
+    // Casstor status that triggered the automation.
     // =====================================================
 
     const {
@@ -290,13 +419,21 @@ export async function triggerWhatsAppShippingAutomation(
     // 4. TRY TO CREATE A NEW RUN
     // =====================================================
     //
+    // DB constraint:
+    //
     // UNIQUE (
     //   shipping_id,
     //   automation_key
     // )
     //
-    // guarantees only one logical automation
-    // per shipment.
+    // Examples:
+    //
+    // shipment 120 + refused_feedback
+    // -> only one logical run
+    //
+    // shipment 120 + cancelled_feedback
+    // -> another independent logical run
+    //
     // =====================================================
 
     const now =
@@ -396,7 +533,13 @@ export async function triggerWhatsAppShippingAutomation(
     // 7. RUN ALREADY EXISTS
     // =====================================================
     //
-    // This is normal when Ozon repeats a webhook.
+    // PostgreSQL 23505 means the unique constraint
+    // blocked another run for:
+    //
+    // shipping_id + automation_key
+    //
+    // This is NORMAL when the carrier repeats
+    // the same webhook.
     // =====================================================
 
     const {
@@ -470,6 +613,9 @@ export async function triggerWhatsAppShippingAutomation(
     // =====================================================
     // 8. ALREADY SENT
     // =====================================================
+    //
+    // Never send again.
+    // =====================================================
 
     if (
       existingStatus ===
@@ -493,12 +639,11 @@ export async function triggerWhatsAppShippingAutomation(
     // 9. PENDING
     // =====================================================
     //
-    // Another process may currently be sending it.
+    // Another execution may currently be sending it.
     //
-    // IMPORTANT:
-    // We do NOT automatically reclaim stale pending
-    // runs because we prefer missing one retry over
-    // risking a duplicate WhatsApp message.
+    // We prefer NOT to take over an old pending run,
+    // because avoiding duplicate WhatsApp messages
+    // is more important than forcing a retry.
     // =====================================================
 
     if (
@@ -558,11 +703,15 @@ export async function triggerWhatsAppShippingAutomation(
     // 12. DO NOT RETRY UNCERTAIN META SENDS
     // =====================================================
     //
-    // If a network problem happened while talking
-    // to Meta, we may not know whether Meta accepted
-    // the message.
+    // Example:
     //
-    // Retrying automatically could send a duplicate.
+    // network connection dropped while sending
+    //
+    // We cannot know with certainty whether Meta
+    // accepted the message.
+    //
+    // Automatic retry could create a duplicate
+    // customer message.
     // =====================================================
 
     if (
@@ -582,7 +731,7 @@ export async function triggerWhatsAppShippingAutomation(
     }
 
     // =====================================================
-    // 13. MAX RETRIES
+    // 13. MAX ATTEMPTS
     // =====================================================
 
     if (
@@ -604,17 +753,18 @@ export async function triggerWhatsAppShippingAutomation(
     // 14. ACQUIRE RETRY LOCK
     // =====================================================
     //
-    // Two repeated webhooks could arrive at nearly
-    // the same time.
+    // Ozon may send two repeated webhooks almost
+    // simultaneously.
     //
-    // Only ONE of them may change:
+    // Only one execution may change:
     //
     // failed -> pending
     //
-    // because we filter using:
-    // - id
-    // - status = failed
-    // - exact attempt_count
+    // We protect it using:
+    //
+    // id
+    // status = failed
+    // exact attempt_count
     //
     // =====================================================
 

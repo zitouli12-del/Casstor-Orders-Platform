@@ -7,6 +7,7 @@ import {
   MessageSquareText,
   Power,
   PowerOff,
+  XCircle,
 } from "lucide-react";
 
 import { supabase } from "@/src/lib/supabase";
@@ -16,6 +17,7 @@ interface AutomationSettings {
   store_id: number;
   stock_alternatives_enabled: boolean;
   refused_feedback_enabled: boolean;
+  cancelled_feedback_enabled: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -24,19 +26,38 @@ export default function ParametresPage() {
   const [settings, setSettings] =
     useState<AutomationSettings | null>(null);
 
-  const [stockAlternativesEnabled, setStockAlternativesEnabled] =
-    useState(false);
+  const [
+    stockAlternativesEnabled,
+    setStockAlternativesEnabled,
+  ] = useState(false);
 
-  const [refusedFeedbackEnabled, setRefusedFeedbackEnabled] =
-    useState(false);
+  const [
+    refusedFeedbackEnabled,
+    setRefusedFeedbackEnabled,
+  ] = useState(false);
 
-  const [loading, setLoading] = useState(true);
+  const [
+    cancelledFeedbackEnabled,
+    setCancelledFeedbackEnabled,
+  ] = useState(false);
 
-  const [savingStockAlternatives, setSavingStockAlternatives] =
-    useState(false);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [savingRefusedFeedback, setSavingRefusedFeedback] =
-    useState(false);
+  const [
+    savingStockAlternatives,
+    setSavingStockAlternatives,
+  ] = useState(false);
+
+  const [
+    savingRefusedFeedback,
+    setSavingRefusedFeedback,
+  ] = useState(false);
+
+  const [
+    savingCancelledFeedback,
+    setSavingCancelledFeedback,
+  ] = useState(false);
 
   const [message, setMessage] =
     useState<string | null>(null);
@@ -106,6 +127,7 @@ export default function ParametresPage() {
           store_id,
           stock_alternatives_enabled,
           refused_feedback_enabled,
+          cancelled_feedback_enabled,
           created_at,
           updated_at
         `)
@@ -133,12 +155,24 @@ export default function ParametresPage() {
             data.refused_feedback_enabled
           )
         );
+
+        setCancelledFeedbackEnabled(
+          Boolean(
+            data.cancelled_feedback_enabled
+          )
+        );
       } else {
         setSettings(null);
+
         setStockAlternativesEnabled(
           false
         );
+
         setRefusedFeedbackEnabled(
+          false
+        );
+
+        setCancelledFeedbackEnabled(
           false
         );
       }
@@ -205,6 +239,7 @@ export default function ParametresPage() {
           store_id,
           stock_alternatives_enabled,
           refused_feedback_enabled,
+          cancelled_feedback_enabled,
           created_at,
           updated_at
         `)
@@ -225,6 +260,12 @@ export default function ParametresPage() {
       setRefusedFeedbackEnabled(
         Boolean(
           data.refused_feedback_enabled
+        )
+      );
+
+      setCancelledFeedbackEnabled(
+        Boolean(
+          data.cancelled_feedback_enabled
         )
       );
 
@@ -298,6 +339,7 @@ export default function ParametresPage() {
           store_id,
           stock_alternatives_enabled,
           refused_feedback_enabled,
+          cancelled_feedback_enabled,
           created_at,
           updated_at
         `)
@@ -321,6 +363,12 @@ export default function ParametresPage() {
         )
       );
 
+      setCancelledFeedbackEnabled(
+        Boolean(
+          data.cancelled_feedback_enabled
+        )
+      );
+
       setMessage(
         nextValue
           ? "Avis après refus activé."
@@ -339,6 +387,106 @@ export default function ParametresPage() {
       );
     } finally {
       setSavingRefusedFeedback(
+        false
+      );
+    }
+  }
+
+  async function toggleCancelledFeedback() {
+    if (savingCancelledFeedback) {
+      return;
+    }
+
+    try {
+      setSavingCancelledFeedback(
+        true
+      );
+
+      setMessage(null);
+      setError(null);
+
+      const storeId =
+        await getCurrentStoreId();
+
+      const nextValue =
+        !cancelledFeedbackEnabled;
+
+      const {
+        data,
+        error: upsertError,
+      } = await supabase
+        .from(
+          "whatsapp_automation_settings"
+        )
+        .upsert(
+          {
+            store_id:
+              storeId,
+
+            cancelled_feedback_enabled:
+              nextValue,
+
+            updated_at:
+              new Date().toISOString(),
+          },
+          {
+            onConflict:
+              "store_id",
+          }
+        )
+        .select(`
+          id,
+          store_id,
+          stock_alternatives_enabled,
+          refused_feedback_enabled,
+          cancelled_feedback_enabled,
+          created_at,
+          updated_at
+        `)
+        .single();
+
+      if (upsertError) {
+        throw upsertError;
+      }
+
+      setSettings(data);
+
+      setStockAlternativesEnabled(
+        Boolean(
+          data.stock_alternatives_enabled
+        )
+      );
+
+      setRefusedFeedbackEnabled(
+        Boolean(
+          data.refused_feedback_enabled
+        )
+      );
+
+      setCancelledFeedbackEnabled(
+        Boolean(
+          data.cancelled_feedback_enabled
+        )
+      );
+
+      setMessage(
+        nextValue
+          ? "Avis après annulation activé."
+          : "Avis après annulation désactivé."
+      );
+    } catch (err) {
+      console.error(
+        "Erreur sauvegarde Cancelled Feedback:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Impossible d'enregistrer le paramètre."
+      );
+    } finally {
+      setSavingCancelledFeedback(
         false
       );
     }
@@ -378,7 +526,6 @@ export default function ParametresPage() {
           </div>
         </header>
 
-        {/* SUCCESS */}
         {message && (
           <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
             <CheckCircle2
@@ -391,16 +538,13 @@ export default function ParametresPage() {
           </div>
         )}
 
-        {/* ERROR */}
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             {error}
           </div>
         )}
 
-        {/* ================================================= */}
         {/* STOCK & COMMANDE */}
-        {/* ================================================= */}
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
@@ -482,6 +626,7 @@ export default function ParametresPage() {
                   Seule la couleur peut être
                   proposée comme alternative.
                 </div>
+
               </div>
 
               <button
@@ -510,9 +655,7 @@ export default function ParametresPage() {
           </div>
         </section>
 
-        {/* ================================================= */}
         {/* SUIVI & QUALITÉ */}
-        {/* ================================================= */}
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
@@ -528,7 +671,9 @@ export default function ParametresPage() {
             </p>
           </div>
 
-          <div className="p-5 sm:p-6">
+          <div className="space-y-4 p-5 sm:p-6">
+
+            {/* REFUSÉ */}
 
             <div className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 sm:flex-row sm:items-center sm:justify-between">
 
@@ -549,7 +694,6 @@ export default function ParametresPage() {
                   </div>
 
                   <div>
-
                     <h3 className="text-base font-bold text-slate-900 sm:text-lg">
                       Avis après refus de livraison
                     </h3>
@@ -565,8 +709,8 @@ export default function ParametresPage() {
                         ? "Activée"
                         : "Désactivée"}
                     </p>
-
                   </div>
+
                 </div>
 
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
@@ -617,6 +761,95 @@ export default function ParametresPage() {
               </button>
 
             </div>
+
+            {/* ANNULÉ */}
+
+            <div className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 sm:flex-row sm:items-center sm:justify-between">
+
+              <div className="min-w-0">
+
+                <div className="flex items-center gap-3">
+
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                      cancelledFeedbackEnabled
+                        ? "bg-emerald-50 text-emerald-600"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    <XCircle
+                      size={19}
+                    />
+                  </div>
+
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 sm:text-lg">
+                      Avis après annulation de livraison
+                    </h3>
+
+                    <p
+                      className={`mt-1 text-xs font-semibold ${
+                        cancelledFeedbackEnabled
+                          ? "text-emerald-600"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {cancelledFeedbackEnabled
+                        ? "Activée"
+                        : "Désactivée"}
+                    </p>
+                  </div>
+
+                </div>
+
+                <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
+                  Lorsqu&apos;une expédition
+                  passe au statut Annulé,
+                  le système pourra contacter
+                  automatiquement le client
+                  sur WhatsApp afin de
+                  comprendre la raison de
+                  l&apos;annulation.
+                </p>
+
+                <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-500">
+                  <strong className="text-slate-700">
+                    Objectif :
+                  </strong>{" "}
+                  comprendre pourquoi le
+                  client a annulé la livraison
+                  malgré l&apos;arrivée du
+                  colis dans sa ville et
+                  améliorer la qualité du
+                  service.
+                </div>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  toggleCancelledFeedback
+                }
+                disabled={
+                  loading ||
+                  savingCancelledFeedback
+                }
+                className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl px-5 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  cancelledFeedbackEnabled
+                    ? "bg-slate-900 text-white hover:bg-slate-800"
+                    : "bg-emerald-600 text-white hover:bg-emerald-700"
+                }`}
+              >
+                {savingCancelledFeedback
+                  ? "Enregistrement..."
+                  : cancelledFeedbackEnabled
+                    ? "Désactiver"
+                    : "Activer"}
+              </button>
+
+            </div>
+
           </div>
         </section>
 

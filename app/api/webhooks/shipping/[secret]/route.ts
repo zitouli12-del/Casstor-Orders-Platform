@@ -447,11 +447,13 @@ export async function POST(
     // to shipping_status.
     // --------------------------------------------------
 
-if (mappedWebhookStatus) {
-  
-      updateData.shipping_status =
-        mappedWebhookStatus;
-    }
+if (
+  statusChanged &&
+  mappedWebhookStatus
+) {
+  updateData.shipping_status =
+    mappedWebhookStatus;
+}
 
     // --------------------------------------------------
     // 10.2 Update situation only if received
@@ -692,12 +694,10 @@ if (mappedWebhookStatus) {
     // - a run already exists
     // --------------------------------------------------
 
-    if (
-      statusChanged &&
-      mappedWebhookStatus
-    ) {
-      after(
-        async () => {
+if (mappedWebhookStatus) {
+  after(
+    async () => {
+      
           try {
             const automationResult =
               await triggerWhatsAppShippingAutomation(

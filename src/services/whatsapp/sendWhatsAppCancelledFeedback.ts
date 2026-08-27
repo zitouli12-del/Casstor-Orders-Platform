@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const GRAPH_API_VERSION = "v26.0";
-const TEMPLATE_NAME = "refused_feedback";
+const TEMPLATE_NAME = "cancelled_feedback";
 const TEMPLATE_LANGUAGE = "ar";
 
 function normalizeMoroccanPhone(
@@ -33,7 +33,7 @@ type SendResult =
       reason: string;
     };
 
-export async function sendWhatsAppRefusedFeedback(
+export async function sendWhatsAppCancelledFeedback(
   admin: SupabaseClient,
   runId: string
 ): Promise<SendResult> {
@@ -65,7 +65,7 @@ export async function sendWhatsAppRefusedFeedback(
 
     if (runError || !automationRun) {
       console.error(
-        "Refused Feedback run lookup failed:",
+        "Cancelled Feedback run lookup failed:",
         runError
       );
 
@@ -81,7 +81,7 @@ export async function sendWhatsAppRefusedFeedback(
 
     if (
       automationRun.automation_key !==
-      "refused_feedback"
+      "cancelled_feedback"
     ) {
       return {
         state: "ignored",
@@ -118,7 +118,7 @@ export async function sendWhatsAppRefusedFeedback(
       error: settingsError,
     } = await admin
       .from("whatsapp_automation_settings")
-      .select("refused_feedback_enabled")
+      .select("cancelled_feedback_enabled")
       .eq(
         "store_id",
         automationRun.store_id
@@ -127,7 +127,7 @@ export async function sendWhatsAppRefusedFeedback(
 
     if (settingsError) {
       console.error(
-        "Refused Feedback settings lookup failed:",
+        "Cancelled Feedback settings lookup failed:",
         settingsError
       );
 
@@ -147,7 +147,7 @@ export async function sendWhatsAppRefusedFeedback(
     }
 
     if (
-      !settings?.refused_feedback_enabled
+      !settings?.cancelled_feedback_enabled
     ) {
       await admin
         .from(
@@ -214,7 +214,7 @@ export async function sendWhatsAppRefusedFeedback(
 
     if (attemptError) {
       console.error(
-        "Refused Feedback attempt registration failed:",
+        "Cancelled Feedback attempt registration failed:",
         attemptError
       );
 
@@ -268,7 +268,7 @@ export async function sendWhatsAppRefusedFeedback(
       !shipment
     ) {
       console.error(
-        "Refused Feedback shipment lookup failed:",
+        "Cancelled Feedback shipment lookup failed:",
         shipmentError
       );
 
@@ -298,7 +298,7 @@ export async function sendWhatsAppRefusedFeedback(
 
     if (
       currentShippingStatus !==
-      "refusé".toLowerCase()
+      "annulé".toLowerCase()
     ) {
       await admin
         .from(
@@ -307,7 +307,7 @@ export async function sendWhatsAppRefusedFeedback(
         .update({
           status: "cancelled",
           last_error:
-            "shipment_no_longer_refused",
+            "shipment_no_longer_cancelled",
           updated_at:
             new Date().toISOString(),
         })
@@ -319,7 +319,7 @@ export async function sendWhatsAppRefusedFeedback(
       return {
         state: "ignored",
         reason:
-          "shipment_no_longer_refused",
+          "shipment_no_longer_cancelled",
       };
     }
 
@@ -350,7 +350,7 @@ export async function sendWhatsAppRefusedFeedback(
 
     if (orderError) {
       console.error(
-        "Refused Feedback order lookup failed:",
+        "Cancelled Feedback order lookup failed:",
         orderError
       );
     }
@@ -418,7 +418,7 @@ export async function sendWhatsAppRefusedFeedback(
       !connection
     ) {
       console.error(
-        "Refused Feedback WhatsApp connection lookup failed:",
+        "Cancelled Feedback WhatsApp connection lookup failed:",
         connectionError
       );
 
@@ -491,7 +491,7 @@ export async function sendWhatsAppRefusedFeedback(
       orderConversationError
     ) {
       console.error(
-        "Refused Feedback order conversation lookup failed:",
+        "Cancelled Feedback order conversation lookup failed:",
         orderConversationError
       );
 
@@ -552,7 +552,7 @@ export async function sendWhatsAppRefusedFeedback(
         phoneConversationError
       ) {
         console.error(
-          "Refused Feedback phone conversation lookup failed:",
+          "Cancelled Feedback phone conversation lookup failed:",
           phoneConversationError
         );
 
@@ -578,7 +578,7 @@ export async function sendWhatsAppRefusedFeedback(
       new Date().toISOString();
 
     // =====================================================
-    // 11. CREATE CONVERSATION
+    // 11. CREATE CONVERSATION IF NEEDED
     // =====================================================
 
     if (!conversation) {
@@ -628,7 +628,7 @@ export async function sendWhatsAppRefusedFeedback(
         !createdConversation
       ) {
         console.error(
-          "Refused Feedback conversation creation failed:",
+          "Cancelled Feedback conversation creation failed:",
           createConversationError
         );
 
@@ -651,7 +651,7 @@ export async function sendWhatsAppRefusedFeedback(
     }
 
     // =====================================================
-    // 12. LINK CONVERSATION TO AUTOMATION RUN
+    // 12. LINK CONVERSATION TO RUN
     // =====================================================
 
     const {
@@ -663,6 +663,7 @@ export async function sendWhatsAppRefusedFeedback(
       .update({
         conversation_id:
           conversation.id,
+
         updated_at:
           now,
       })
@@ -675,12 +676,11 @@ export async function sendWhatsAppRefusedFeedback(
       runConversationError
     ) {
       console.error(
-        "Refused Feedback run conversation update failed:",
+        "Cancelled Feedback run conversation update failed:",
         runConversationError
       );
     }
 
-    // Keep conversation connected to current order
     const {
       error: conversationLinkError,
     } = await admin
@@ -707,7 +707,7 @@ export async function sendWhatsAppRefusedFeedback(
       conversationLinkError
     ) {
       console.error(
-        "Refused Feedback conversation link update failed:",
+        "Cancelled Feedback conversation link update failed:",
         conversationLinkError
       );
     }
@@ -765,9 +765,7 @@ export async function sendWhatsAppRefusedFeedback(
     // 14. SEND TO META
     //
     // Network error = uncertain result.
-    //
-    // We don't know whether Meta accepted the message,
-    // therefore NEVER automatically retry this case.
+    // Never retry automatically in this case.
     // =====================================================
 
     let metaResponse: Response;
@@ -803,7 +801,7 @@ export async function sendWhatsAppRefusedFeedback(
           : String(fetchError);
 
       console.error(
-        "Refused Feedback Meta network error:",
+        "Cancelled Feedback Meta network error:",
         fetchError
       );
 
@@ -843,7 +841,7 @@ export async function sendWhatsAppRefusedFeedback(
     }
 
     console.log(
-      "===== REFUSED FEEDBACK META RESPONSE ====="
+      "===== CANCELLED FEEDBACK META RESPONSE ====="
     );
 
     console.log(
@@ -855,14 +853,12 @@ export async function sendWhatsAppRefusedFeedback(
     );
 
     // =====================================================
-    // 16. CLEAR META HTTP ERROR
-    //
-    // This can be retried by the trigger.
+    // 16. META HTTP ERROR
     // =====================================================
 
     if (!metaResponse.ok) {
       console.error(
-        "Refused Feedback Meta send failed:",
+        "Cancelled Feedback Meta send failed:",
         metaResponse.status,
         metaData
       );
@@ -907,15 +903,13 @@ export async function sendWhatsAppRefusedFeedback(
 
     // =====================================================
     // 18. LOCAL TEMPLATE BODY
-    //
-    // Used only for WhatsApp Inbox/history.
     // =====================================================
 
     const templateBody =
       `مرحباً ${customerName} 👋\n\n` +
-      `لاحظنا أن طلبكم تم تسجيله كطلب مرفوض.\n\n` +
-      `يهمنا معرفة سبب عدم استلام الطلب حتى نتمكن من تحسين جودة خدمتنا.\n\n` +
-      `المرجو الرد على هذه الرسالة وشرح السبب.\n\n` +
+      `لاحظنا أن طلبكم تم تسجيله كطلب ملغى رغم وصوله إلى مدينتكم في الوقت المحدد.\n\n` +
+      `يهمنا معرفة سبب إلغاء الطلب حتى نتمكن من تحسين جودة خدمتنا.\n\n` +
+      `المرجو الرد على هذه الرسالة ومشاركتنا سبب إلغاء الطلب.\n\n` +
       `شكراً لتعاونكم.`;
 
     // =====================================================
@@ -1002,7 +996,7 @@ export async function sendWhatsAppRefusedFeedback(
       conversationUpdateError
     ) {
       console.error(
-        "Refused Feedback conversation update failed:",
+        "Cancelled Feedback conversation update failed:",
         conversationUpdateError
       );
     }
@@ -1010,13 +1004,7 @@ export async function sendWhatsAppRefusedFeedback(
     // =====================================================
     // 21. META SUCCESS + LOCAL HISTORY FAILURE
     //
-    // VERY IMPORTANT:
-    //
-    // Meta already accepted the message.
-    //
-    // We mark the run SENT even if local history saving
-    // failed, otherwise a retry could send a duplicate
-    // WhatsApp message to the client.
+    // Never retry: Meta already accepted the message.
     // =====================================================
 
     if (
@@ -1024,7 +1012,7 @@ export async function sendWhatsAppRefusedFeedback(
       !savedMessage
     ) {
       console.error(
-        "Refused Feedback outgoing history save failed:",
+        "Cancelled Feedback outgoing history save failed:",
         saveMessageError
       );
 
@@ -1117,7 +1105,7 @@ export async function sendWhatsAppRefusedFeedback(
       completeRunError
     ) {
       console.error(
-        "Refused Feedback run completion failed:",
+        "Cancelled Feedback run completion failed:",
         completeRunError
       );
     }
@@ -1139,7 +1127,7 @@ export async function sendWhatsAppRefusedFeedback(
     };
   } catch (error) {
     console.error(
-      "Unexpected Refused Feedback send error:",
+      "Unexpected Cancelled Feedback send error:",
       error
     );
 
@@ -1192,7 +1180,7 @@ async function failRun(
 
   if (error) {
     console.error(
-      "Refused Feedback run failure update failed:",
+      "Cancelled Feedback run failure update failed:",
       error
     );
   }
