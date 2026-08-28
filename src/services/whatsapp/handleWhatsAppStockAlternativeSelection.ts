@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sendWhatsAppStockAlternativeConfirmed } from "./sendWhatsAppStockAlternativeConfirmed";
 
 type SelectionResult =
   | {
@@ -630,6 +631,28 @@ export async function handleWhatsAppStockAlternativeSelection(
       console.warn(
         "Stock Alternative request was already processed:",
         stockRequest.id
+      );
+    } else {
+      // ===================================================
+      // 14. SEND FINAL CONFIRMATION MESSAGE
+      //
+      // Important:
+      // - The order color change is already completed.
+      // - A WhatsApp send failure must NOT roll back or mark
+      //   the customer's selection as failed.
+      // - The sender has its own duplicate protection and
+      //   failure tracking fields on this request.
+      // ===================================================
+
+      const confirmationResult =
+        await sendWhatsAppStockAlternativeConfirmed(
+          admin,
+          String(stockRequest.id)
+        );
+
+      console.log(
+        "Stock Alternative final confirmation result:",
+        confirmationResult
       );
     }
 
