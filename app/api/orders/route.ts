@@ -10,6 +10,8 @@ import {
   prepareWhatsAppStockAlternativeRequest,
 } from "../../../src/services/whatsapp/prepareWhatsAppStockAlternativeRequest";
 
+import { normalizeColor } from "../../../src/lib/colors";
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -133,7 +135,19 @@ export async function POST(
     } = body;
 
     // =================================================
-    // 4. CREATE ORDER
+    // 4. NORMALIZE COLOR KEY
+    //
+    // Keep the original color exactly as received.
+    // Unknown colors are accepted with color_key = null.
+    // =================================================
+
+    const colorKey =
+      typeof color === "string"
+        ? normalizeColor(color)
+        : null;
+
+    // =================================================
+    // 5. CREATE ORDER
     // =================================================
 
     const {
@@ -151,6 +165,8 @@ export async function POST(
         city,
         address,
         color,
+        color_key:
+          colorKey,
         size,
         price,
 
@@ -202,12 +218,15 @@ export async function POST(
       color:
         order.color,
 
+      color_key:
+        order.color_key,
+
       size:
         order.size,
     });
 
     // =================================================
-    // 5. BACKGROUND TASKS
+    // 6. BACKGROUND TASKS
     //
     // IMPORTANT:
     // The Landing Page does NOT wait for WhatsApp.
@@ -311,7 +330,7 @@ export async function POST(
     });
 
     // =================================================
-    // 6. RETURN SUCCESS IMMEDIATELY
+    // 7. RETURN SUCCESS IMMEDIATELY
     // =================================================
 
     return NextResponse.json(

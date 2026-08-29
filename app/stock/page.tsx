@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { supabase } from "@/src/lib/supabase";
+import { normalizeColor } from "@/src/lib/colors";
 
 import AddStockProductModal, {
   StockVariantForm,
@@ -30,6 +31,7 @@ type StockVariant = {
   id: number;
   product_id: number;
   color: string;
+  color_key: string | null;
   size: string;
   image_url: string;
   quantity: number;
@@ -298,6 +300,7 @@ export default function StockPage() {
         .from("stock_variants")
         .update({
           color,
+          color_key: normalizeColor(color),
           size,
           quantity,
           purchase_price: purchasePrice,
@@ -676,6 +679,7 @@ export default function StockPage() {
       const variantRows: {
         product_id: number;
         color: string;
+        color_key: string | null;
         size: string;
         image_url: string;
         quantity: number;
@@ -726,9 +730,14 @@ export default function StockPage() {
             .from("stock-images")
             .getPublicUrl(filePath);
 
+          const normalizedColor = normalizeColor(
+            variant.color
+          );
+
           variantRows.push({
             product_id: product.id,
             color: variant.color.trim(),
+            color_key: normalizedColor,
             size: variant.size.trim(),
             image_url: publicUrl,
             quantity:

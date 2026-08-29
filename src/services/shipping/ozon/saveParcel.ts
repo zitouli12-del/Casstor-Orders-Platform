@@ -1,4 +1,6 @@
 import { supabase } from "@/src/lib/supabase";
+import { normalizeColor } from "@/src/lib/colors";
+
 import { ShippingParcelInput } from "@/src/types/ShippingParcelInput";
 
 export async function saveParcel(
@@ -17,7 +19,8 @@ export async function saveParcel(
 
       shipment_type: parcel.shipmentType,
 
-      parent_shipment_id: parcel.parentShipmentId,
+      parent_shipment_id:
+        parcel.parentShipmentId,
 
       customer_name: parcel.receiver,
 
@@ -29,7 +32,12 @@ export async function saveParcel(
 
       parcel_product: parcel.product,
 
+      // Original value stays untouched
       parcel_color: parcel.color,
+
+      // Stable internal color identity
+      parcel_color_key:
+        normalizeColor(parcel.color),
 
       parcel_size: parcel.size,
 
@@ -44,12 +52,13 @@ export async function saveParcel(
     );
   }
 
-  const { error: orderError } = await supabase
-    .from("orders")
-    .update({
-      shipping_stage: "sent",
-    })
-    .eq("id", parcel.orderId);
+  const { error: orderError } =
+    await supabase
+      .from("orders")
+      .update({
+        shipping_stage: "sent",
+      })
+      .eq("id", parcel.orderId);
 
   if (orderError) {
     throw new Error(

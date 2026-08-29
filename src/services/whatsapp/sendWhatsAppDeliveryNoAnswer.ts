@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeColor } from "@/src/lib/colors";
 
 const GRAPH_API_VERSION = "v26.0";
 const TEMPLATE_LANGUAGE = "ar";
@@ -242,6 +243,7 @@ async function findProductImage(
     storeId: number;
     productName: string;
     color: string;
+    colorKey?: string | null;
     size: string;
   }
 ): Promise<{
@@ -293,6 +295,7 @@ async function findProductImage(
         id,
         product_id,
         color,
+        color_key,
         size,
         image_url
       `)
@@ -310,14 +313,28 @@ async function findProductImage(
       };
     }
 
+    const requestedColorKey =
+      String(params.colorKey || "").trim() ||
+      normalizeColor(params.color);
+
     const normalizedColor = normalizeValue(params.color);
     const normalizedSize = normalizeValue(params.size);
 
     const variant = (variants || []).find((item) => {
-      return (
-        normalizeValue(item.color) === normalizedColor &&
-        normalizeValue(item.size) === normalizedSize
-      );
+      if (normalizeValue(item.size) !== normalizedSize) {
+        return false;
+      }
+
+      if (requestedColorKey) {
+        const variantColorKey =
+          String(item.color_key || "").trim() ||
+          normalizeColor(item.color);
+
+        return variantColorKey === requestedColorKey;
+      }
+
+      // Safe legacy fallback for unknown colors: only exact text match.
+      return normalizeValue(item.color) === normalizedColor;
     });
 
     if (!variant) {
@@ -523,6 +540,7 @@ export async function sendWhatsAppDeliveryNoAnswer(
         customer_phone,
         parcel_product,
         parcel_color,
+        parcel_color_key,
         parcel_size,
         courier_name,
         courier_phone
@@ -588,6 +606,7 @@ export async function sendWhatsAppDeliveryNoAnswer(
         phone,
         product,
         color,
+        color_key,
         size
       `)
       .eq("id", automationRun.order_id)
@@ -630,6 +649,13 @@ export async function sendWhatsAppDeliveryNoAnswer(
     const productColor = String(
       shipment.parcel_color || order?.color || ""
     ).trim();
+
+    const productColorKey =
+      String(shipment.parcel_color_key || "").trim() ||
+      normalizeColor(productColor) ||
+      (!shipment.parcel_color
+        ? String(order?.color_key || "").trim()
+        : "");
 
     const productSize = String(
       shipment.parcel_size || order?.size || ""
@@ -897,6 +923,7 @@ export async function sendWhatsAppDeliveryNoAnswer(
         storeId: Number(automationRun.store_id),
         productName,
         color: productColor,
+        colorKey: productColorKey,
         size: productSize,
       });
 
