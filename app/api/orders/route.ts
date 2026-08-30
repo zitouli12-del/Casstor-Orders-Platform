@@ -25,6 +25,12 @@ const corsHeaders = {
     "Content-Type, x-api-key",
 };
 
+function isValidUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
 // =====================================================
 // OPTIONS
 // =====================================================
@@ -132,10 +138,110 @@ export async function POST(
       size,
       price,
       source,
+      client_order_id,
     } = body;
 
+    const clientOrderId =
+      typeof client_order_id === "string"
+        ? client_order_id.trim()
+        : null;
+
+    if (
+      client_order_id !== undefined &&
+      client_order_id !== null &&
+      (
+        typeof client_order_id !== "string" ||
+        !clientOrderId ||
+        !isValidUuid(clientOrderId)
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid client_order_id",
+        },
+        {
+          status: 400,
+          headers: corsHeaders,
+        }
+      );
+    }
+
     // =================================================
-    // 4. NORMALIZE COLOR KEY
+    // 4. IDEMPOTENCY CHECK
+    //
+    // If the Landing retries the same request with the
+    // same client_order_id, return the existing order
+    // instead of creating a duplicate.
+    // =================================================
+
+    if (clientOrderId) {
+      const {
+        data: existingOrder,
+        error: existingOrderError,
+      } = await supabase
+        .from("orders")
+        .select("id, store_id, client_order_id")
+        .eq("store_id", keyData.store_id)
+        .eq("client_order_id", clientOrderId)
+        .maybeSingle();
+
+      if (existingOrderError) {
+        console.error(
+          "Idempotency lookup failed:",
+          existingOrderError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Idempotency check failed",
+          },
+          {
+            status: 500,
+            headers: corsHeaders,
+          }
+        );
+      }
+
+      if (existingOrder) {
+        after(async () => {
+          try {
+            await supabase
+              .from("api_keys")
+              .update({
+                last_used_at:
+                  new Date().toISOString(),
+              })
+              .eq("api_key", apiKey);
+          } catch (error) {
+            console.error(
+              "API key update unexpected error:",
+              error
+            );
+          }
+        });
+
+        return NextResponse.json(
+          {
+            success: true,
+            order_id: existingOrder.id,
+            store_id: keyData.store_id,
+            client_order_id: clientOrderId,
+            idempotent: true,
+            stock_alternatives:
+              "already_created",
+          },
+          {
+            status: 200,
+            headers: corsHeaders,
+          }
+        );
+      }
+    }
+
+    // =================================================
+    // 5. NORMALIZE COLOR KEY
     //
     // Keep the original color exactly as received.
     // Unknown colors are accepted with color_key = null.
@@ -147,7 +253,7 @@ export async function POST(
         : null;
 
     // =================================================
-    // 5. CREATE ORDER
+    // 6. CREATE ORDER
     // =================================================
 
     const {
@@ -174,6 +280,9 @@ export async function POST(
           "nouvelle",
 
         source,
+
+        client_order_id:
+          clientOrderId,
       })
       .select()
       .single();
@@ -182,6 +291,47 @@ export async function POST(
       orderError ||
       !order
     ) {
+      // A concurrent retry may pass the first lookup and
+      // collide on the unique (store_id, client_order_id)
+      // index. In that case, return the order that won the
+      // race instead of returning an error.
+      if (
+        orderError?.code === "23505" &&
+        clientOrderId
+      ) {
+        const {
+          data: racedOrder,
+          error: racedOrderError,
+        } = await supabase
+          .from("orders")
+          .select("id, store_id, client_order_id")
+          .eq("store_id", keyData.store_id)
+          .eq("client_order_id", clientOrderId)
+          .maybeSingle();
+
+        if (
+          !racedOrderError &&
+          racedOrder
+        ) {
+          return NextResponse.json(
+            {
+              success: true,
+              order_id: racedOrder.id,
+              store_id: keyData.store_id,
+              client_order_id:
+                clientOrderId,
+              idempotent: true,
+              stock_alternatives:
+                "already_created",
+            },
+            {
+              status: 200,
+              headers: corsHeaders,
+            }
+          );
+        }
+      }
+
       console.error(
         "Order creation failed:",
         orderError
@@ -223,10 +373,13 @@ export async function POST(
 
       size:
         order.size,
+
+      client_order_id:
+        order.client_order_id,
     });
 
     // =================================================
-    // 6. BACKGROUND TASKS
+    // 7. BACKGROUND TASKS
     //
     // IMPORTANT:
     // The Landing Page does NOT wait for WhatsApp.
@@ -330,7 +483,7 @@ export async function POST(
     });
 
     // =================================================
-    // 7. RETURN SUCCESS IMMEDIATELY
+    // 8. RETURN SUCCESS IMMEDIATELY
     // =================================================
 
     return NextResponse.json(
@@ -342,6 +495,12 @@ export async function POST(
 
         store_id:
           keyData.store_id,
+
+        client_order_id:
+          order.client_order_id,
+
+        idempotent:
+          false,
 
         stock_alternatives:
           "scheduled",
