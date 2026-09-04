@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Package,
   Pencil,
+  Plus,
   Search,
   Trash2,
   X,
@@ -53,6 +54,98 @@ type EditingValues = {
   purchase_price: string;
 };
 
+type NewVariantValues = {
+  color: string;
+  size: string;
+  quantity: string;
+  purchase_price: string;
+};
+
+type StockFilter = "all" | "low" | "out";
+
+function getVariantQuantity(variant: StockVariant) {
+  return Number(variant.quantity || 0);
+}
+
+function isLowStockVariant(variant: StockVariant) {
+  const quantity = getVariantQuantity(variant);
+  return quantity > 0 && quantity <= 5;
+}
+
+function isOutOfStockVariant(variant: StockVariant) {
+  return getVariantQuantity(variant) === 0;
+}
+
+function getSizeSortRank(size: string) {
+  const normalized = size
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+
+  const ranks: Record<string, number> = {
+    XXS: 10,
+    XS: 20,
+    S: 30,
+    M: 40,
+    L: 50,
+    XL: 60,
+    "2XL": 70,
+    XXL: 70,
+    "3XL": 80,
+    XXXL: 80,
+    "4XL": 90,
+    "5XL": 100,
+    "6XL": 110,
+  };
+
+  if (normalized in ranks) {
+    return ranks[normalized];
+  }
+
+  const numericSize = Number(normalized);
+  if (Number.isFinite(numericSize)) {
+    return 1000 + numericSize;
+  }
+
+  return 10000;
+}
+
+function compareStockVariants(
+  first: StockVariant,
+  second: StockVariant
+) {
+  const firstColor = (first.color_key || first.color)
+    .trim()
+    .toLowerCase();
+
+  const secondColor = (second.color_key || second.color)
+    .trim()
+    .toLowerCase();
+
+  const colorComparison = firstColor.localeCompare(
+    secondColor,
+    "fr",
+    { sensitivity: "base", numeric: true }
+  );
+
+  if (colorComparison !== 0) {
+    return colorComparison;
+  }
+
+  const sizeRankComparison =
+    getSizeSortRank(first.size) -
+    getSizeSortRank(second.size);
+
+  if (sizeRankComparison !== 0) {
+    return sizeRankComparison;
+  }
+
+  return first.size.localeCompare(second.size, "fr", {
+    sensitivity: "base",
+    numeric: true,
+  });
+}
+
 export default function StockPage() {
   const [products, setProducts] = useState<StockProduct[]>([]);
   const [variants, setVariants] = useState<StockVariant[]>([]);
@@ -60,12 +153,36 @@ export default function StockPage() {
 
   const [search, setSearch] = useState("");
 
+  const [stockFilter, setStockFilter] =
+    useState<StockFilter>("all");
+
   const [expandedProducts, setExpandedProducts] = useState<number[]>(
     []
   );
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+
+  // =========================================================
+  // ADD VARIANT
+  // =========================================================
+
+  const [addVariantProduct, setAddVariantProduct] =
+    useState<StockProduct | null>(null);
+
+  const [newVariantValues, setNewVariantValues] =
+    useState<NewVariantValues>({
+      color: "",
+      size: "",
+      quantity: "0",
+      purchase_price: "",
+    });
+
+  const [newVariantImage, setNewVariantImage] =
+    useState<File | null>(null);
+
+  const [isAddingVariant, setIsAddingVariant] =
+    useState(false);
 
   // =========================================================
   // VARIANT EDITING
@@ -178,24 +295,65 @@ export default function StockPage() {
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    if (!query) {
-      return productsWithVariants;
-    }
+    return productsWithVariants
+      .map((product) => {
+        const productMatch =
+          !query ||
+          product.name.toLowerCase().includes(query);
 
-    return productsWithVariants.filter((product) => {
-      const productMatch = product.name
-        .toLowerCase()
-        .includes(query);
+        const visibleVariants = product.variants
+          .filter((variant) => {
+            const variantMatch =
+              productMatch ||
+              variant.color.toLowerCase().includes(query) ||
+              variant.size.toLowerCase().includes(query);
 
-      const variantMatch = product.variants.some(
-        (variant) =>
-          variant.color.toLowerCase().includes(query) ||
-          variant.size.toLowerCase().includes(query)
+            if (!variantMatch) {
+              return false;
+            }
+
+            if (stockFilter === "low") {
+              return isLowStockVariant(variant);
+            }
+
+            if (stockFilter === "out") {
+              return isOutOfStockVariant(variant);
+            }
+
+            return true;
+          })
+          .sort(compareStockVariants);
+
+        if (visibleVariants.length === 0) {
+          return null;
+        }
+
+        const visibleQuantity = visibleVariants.reduce(
+          (total, variant) =>
+            total + getVariantQuantity(variant),
+          0
+        );
+
+        const visibleValue = visibleVariants.reduce(
+          (total, variant) =>
+            total +
+            getVariantQuantity(variant) *
+              Number(variant.purchase_price || 0),
+          0
+        );
+
+        return {
+          ...product,
+          variants: visibleVariants,
+          totalQuantity: visibleQuantity,
+          totalValue: visibleValue,
+        };
+      })
+      .filter(
+        (product): product is ProductWithVariants =>
+          product !== null
       );
-
-      return productMatch || variantMatch;
-    });
-  }, [productsWithVariants, search]);
+  }, [productsWithVariants, search, stockFilter]);
 
   // =========================================================
   // STATISTICS
@@ -204,6 +362,14 @@ export default function StockPage() {
   const totalProducts = productsWithVariants.length;
 
   const totalVariants = variants.length;
+
+  const lowStockVariants = variants.filter(
+    isLowStockVariant
+  ).length;
+
+  const outOfStockVariants = variants.filter(
+    isOutOfStockVariant
+  ).length;
 
   const totalQuantity = productsWithVariants.reduce(
     (total, product) => total + product.totalQuantity,
@@ -349,6 +515,134 @@ export default function StockPage() {
   }
 
   // =========================================================
+  // WHATSAPP-COMPATIBLE STOCK IMAGE
+  // =========================================================
+
+  async function convertStockImageToJpeg(
+    file: File
+  ): Promise<File> {
+    if (!file.type.startsWith("image/")) {
+      throw new Error(
+        "Veuillez sélectionner une image valide."
+      );
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error(
+        "L'image ne doit pas dépasser 5 MB."
+      );
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+
+    try {
+      const image = await new Promise<HTMLImageElement>(
+        (resolve, reject) => {
+          const img = new Image();
+
+          img.onload = () => resolve(img);
+
+          img.onerror = () =>
+            reject(
+              new Error(
+                "Impossible de lire cette image."
+              )
+            );
+
+          img.src = objectUrl;
+        }
+      );
+
+      if (!image.naturalWidth || !image.naturalHeight) {
+        throw new Error(
+          "Dimensions de l'image invalides."
+        );
+      }
+
+      const maxDimension = 2400;
+      const scale = Math.min(
+        1,
+        maxDimension /
+          Math.max(
+            image.naturalWidth,
+            image.naturalHeight
+          )
+      );
+
+      const width = Math.max(
+        1,
+        Math.round(image.naturalWidth * scale)
+      );
+
+      const height = Math.max(
+        1,
+        Math.round(image.naturalHeight * scale)
+      );
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        throw new Error(
+          "Impossible de préparer l'image."
+        );
+      }
+
+      // JPEG does not support transparency. A white background
+      // keeps transparent PNG/WebP images visually clean.
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+
+      const jpegBlob = await new Promise<Blob>(
+        (resolve, reject) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(
+                  new Error(
+                    "Impossible de convertir l'image en JPEG."
+                  )
+                );
+
+                return;
+              }
+
+              resolve(blob);
+            },
+            "image/jpeg",
+            0.9
+          );
+        }
+      );
+
+      if (jpegBlob.size > 5 * 1024 * 1024) {
+        throw new Error(
+          "L'image convertie dépasse 5 MB. Veuillez utiliser une image plus légère."
+        );
+      }
+
+      const baseName =
+        file.name.replace(/\.[^/.]+$/, "") ||
+        "stock-image";
+
+      return new File(
+        [jpegBlob],
+        `${baseName}.jpg`,
+        {
+          type: "image/jpeg",
+          lastModified: Date.now(),
+        }
+      );
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+
+  // =========================================================
   // CHANGE VARIANT IMAGE
   // =========================================================
 
@@ -412,21 +706,18 @@ export default function StockPage() {
       }
 
       // -------------------------------------------------------
-      // FILE EXTENSION
+      // CONVERT TO WHATSAPP-COMPATIBLE JPEG
       // -------------------------------------------------------
 
-      const extension =
-        file.name
-          .split(".")
-          .pop()
-          ?.toLowerCase() || "jpg";
+      const uploadFile =
+        await convertStockImageToJpeg(file);
 
       // -------------------------------------------------------
       // NEW STORAGE PATH
       // -------------------------------------------------------
 
       const newPath =
-        `${store.id}/${variant.product_id}/${crypto.randomUUID()}.${extension}`;
+        `${store.id}/${variant.product_id}/${crypto.randomUUID()}.jpg`;
 
       // -------------------------------------------------------
       // UPLOAD NEW IMAGE
@@ -436,8 +727,9 @@ export default function StockPage() {
         error: uploadError,
       } = await supabase.storage
         .from("stock-images")
-        .upload(newPath, file, {
+        .upload(newPath, uploadFile, {
           cacheControl: "3600",
+          contentType: "image/jpeg",
           upsert: false,
         });
 
@@ -602,6 +894,205 @@ export default function StockPage() {
   }
 
   // =========================================================
+  // ADD VARIANT
+  // =========================================================
+
+  function openAddVariantModal(product: StockProduct) {
+    setAddVariantProduct(product);
+    setNewVariantValues({
+      color: "",
+      size: "",
+      quantity: "0",
+      purchase_price: "",
+    });
+    setNewVariantImage(null);
+  }
+
+  function closeAddVariantModal() {
+    if (isAddingVariant) return;
+
+    setAddVariantProduct(null);
+    setNewVariantValues({
+      color: "",
+      size: "",
+      quantity: "0",
+      purchase_price: "",
+    });
+    setNewVariantImage(null);
+  }
+
+  async function handleAddVariant() {
+    if (!addVariantProduct) return;
+
+    let uploadedPath: string | null = null;
+
+    try {
+      setIsAddingVariant(true);
+
+      const color = newVariantValues.color.trim();
+      const size = newVariantValues.size.trim();
+      const quantity = Number(newVariantValues.quantity);
+      const purchasePrice = Number(
+        newVariantValues.purchase_price
+      );
+
+      if (!color) {
+        throw new Error("La couleur est obligatoire.");
+      }
+
+      if (!size) {
+        throw new Error("La taille est obligatoire.");
+      }
+
+      if (!Number.isInteger(quantity) || quantity < 0) {
+        throw new Error(
+          "La quantité doit être un nombre entier supérieur ou égal à 0."
+        );
+      }
+
+      if (!Number.isFinite(purchasePrice) || purchasePrice < 0) {
+        throw new Error("Le prix d'achat est invalide.");
+      }
+
+      if (!newVariantImage) {
+        throw new Error("La photo est obligatoire.");
+      }
+
+      const normalizedColor = normalizeColor(color);
+
+      const duplicateVariant = variants.some((variant) => {
+        if (variant.product_id !== addVariantProduct.id) {
+          return false;
+        }
+
+        const existingColorKey =
+          variant.color_key || normalizeColor(variant.color);
+
+        const sameColor = normalizedColor
+          ? existingColorKey === normalizedColor
+          : variant.color.trim().toLowerCase() ===
+            color.toLowerCase();
+
+        const sameSize =
+          variant.size.trim().toLowerCase() ===
+          size.toLowerCase();
+
+        return sameColor && sameSize;
+      });
+
+      if (duplicateVariant) {
+        throw new Error(
+          "Cette variante existe déjà pour ce modèle."
+        );
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) throw userError;
+
+      if (!user) {
+        throw new Error("Utilisateur non connecté.");
+      }
+
+      const {
+        data: store,
+        error: storeError,
+      } = await supabase
+        .from("stores")
+        .select("id")
+        .eq("owner_id", user.id)
+        .single();
+
+      if (storeError) throw storeError;
+
+      if (!store || store.id !== addVariantProduct.store_id) {
+        throw new Error(
+          "Ce modèle n'appartient pas au magasin actif."
+        );
+      }
+
+      const uploadFile = await convertStockImageToJpeg(
+        newVariantImage
+      );
+
+      const filePath =
+        `${store.id}/${addVariantProduct.id}/${crypto.randomUUID()}.jpg`;
+
+      uploadedPath = filePath;
+
+      const { error: uploadError } = await supabase.storage
+        .from("stock-images")
+        .upload(filePath, uploadFile, {
+          cacheControl: "3600",
+          contentType: "image/jpeg",
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage
+        .from("stock-images")
+        .getPublicUrl(filePath);
+
+      const { error: insertError } = await supabase
+        .from("stock_variants")
+        .insert({
+          product_id: addVariantProduct.id,
+          color,
+          color_key: normalizedColor,
+          size,
+          image_url: publicUrl,
+          quantity,
+          purchase_price: purchasePrice,
+        });
+
+      if (insertError) throw insertError;
+
+      // From this point the DB row owns the uploaded image.
+      // Do not remove it if a later UI refresh ever fails.
+      uploadedPath = null;
+
+      setExpandedProducts((current) =>
+        current.includes(addVariantProduct.id)
+          ? current
+          : [...current, addVariantProduct.id]
+      );
+
+      setAddVariantProduct(null);
+      setNewVariantValues({
+        color: "",
+        size: "",
+        quantity: "0",
+        purchase_price: "",
+      });
+      setNewVariantImage(null);
+
+      await fetchStock();
+    } catch (error) {
+      if (uploadedPath) {
+        await supabase.storage
+          .from("stock-images")
+          .remove([uploadedPath]);
+      }
+
+      console.error("Erreur ajout variante:", error);
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Impossible d'ajouter la variante."
+      );
+    } finally {
+      setIsAddingVariant(false);
+    }
+  }
+
+  // =========================================================
   // ADD PRODUCT
   // =========================================================
 
@@ -700,21 +1191,19 @@ export default function StockPage() {
 
           const file = variant.imageFile;
 
-          const extension =
-            file.name
-              .split(".")
-              .pop()
-              ?.toLowerCase() || "jpg";
+          const uploadFile =
+            await convertStockImageToJpeg(file);
 
           const filePath =
-            `${store.id}/${product.id}/${crypto.randomUUID()}.${extension}`;
+            `${store.id}/${product.id}/${crypto.randomUUID()}.jpg`;
 
           const {
             error: uploadError,
           } = await supabase.storage
             .from("stock-images")
-            .upload(filePath, file, {
+            .upload(filePath, uploadFile, {
               cacheControl: "3600",
+              contentType: "image/jpeg",
               upsert: false,
             });
 
@@ -887,26 +1376,82 @@ export default function StockPage() {
             </h2>
 
             <p className="mt-0.5 text-xs text-slate-500">
-              {totalProducts} modèle
-              {totalProducts !== 1 ? "s" : ""}
+              {filteredProducts.length} modèle
+              {filteredProducts.length !== 1 ? "s" : ""}
+              {stockFilter !== "all" || search.trim()
+                ? ` affiché${
+                    filteredProducts.length !== 1
+                      ? "s"
+                      : ""
+                  }`
+                : ""}
             </p>
           </div>
 
-          <div className="relative w-full sm:w-80">
-            <Search
-              size={18}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setStockFilter("all")}
+                className={`inline-flex h-8 items-center rounded-lg border px-3 text-xs font-bold transition-colors ${
+                  stockFilter === "all"
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Tous
+                <span className="ml-1.5 opacity-70">
+                  {totalVariants}
+                </span>
+              </button>
 
-            <input
-              type="text"
-              value={search}
-              onChange={(event) =>
-                setSearch(event.target.value)
-              }
-              placeholder="Rechercher modèle, couleur, taille..."
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-700 outline-none transition focus:border-orange-300 focus:bg-white focus:ring-2 focus:ring-orange-100"
-            />
+              <button
+                type="button"
+                onClick={() => setStockFilter("low")}
+                className={`inline-flex h-8 items-center rounded-lg border px-3 text-xs font-bold transition-colors ${
+                  stockFilter === "low"
+                    ? "border-amber-300 bg-amber-50 text-amber-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Stock faible
+                <span className="ml-1.5 opacity-70">
+                  {lowStockVariants}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStockFilter("out")}
+                className={`inline-flex h-8 items-center rounded-lg border px-3 text-xs font-bold transition-colors ${
+                  stockFilter === "out"
+                    ? "border-red-300 bg-red-50 text-red-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                Rupture
+                <span className="ml-1.5 opacity-70">
+                  {outOfStockVariants}
+                </span>
+              </button>
+            </div>
+
+            <div className="relative w-full sm:w-80">
+              <Search
+                size={18}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
+              <input
+                type="text"
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Rechercher modèle, couleur, taille..."
+                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-700 outline-none transition focus:border-orange-300 focus:bg-white focus:ring-2 focus:ring-orange-100"
+              />
+            </div>
           </div>
         </div>
 
@@ -942,8 +1487,8 @@ export default function StockPage() {
                   TABLE HEADER
               ================================================= */}
 
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/90">
+              <thead className="sticky top-0 z-30 bg-slate-50">
+                <tr className="border-b border-slate-200 bg-slate-50/95 shadow-[0_1px_0_rgba(148,163,184,0.16)]">
                   <th className="w-14 px-5 py-4 text-left text-xs font-bold uppercase tracking-wide text-slate-400">
                     #
                   </th>
@@ -1003,6 +1548,9 @@ export default function StockPage() {
                         onToggle={() =>
                           toggleProduct(product.id)
                         }
+                        onAddVariant={() =>
+                          openAddVariantModal(product)
+                        }
                         formatMoney={formatMoney}
                         editingVariantId={
                           editingVariantId
@@ -1048,6 +1596,187 @@ export default function StockPage() {
       </div>
 
       {/* =====================================================
+          ADD VARIANT MODAL
+      ===================================================== */}
+
+      {addVariantProduct && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeAddVariantModal();
+            }
+          }}
+        >
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Ajouter une variante
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {addVariantProduct.name}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeAddVariantModal}
+                disabled={isAddingVariant}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                title="Fermer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Couleur
+                  </span>
+                  <input
+                    type="text"
+                    value={newVariantValues.color}
+                    onChange={(event) =>
+                      setNewVariantValues((current) => ({
+                        ...current,
+                        color: event.target.value,
+                      }))
+                    }
+                    placeholder="Ex. Bleu marine"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                  />
+                </label>
+
+                <label className="space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Taille
+                  </span>
+                  <input
+                    type="text"
+                    value={newVariantValues.size}
+                    onChange={(event) =>
+                      setNewVariantValues((current) => ({
+                        ...current,
+                        size: event.target.value,
+                      }))
+                    }
+                    placeholder="Ex. 3XL"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                  />
+                </label>
+
+                <label className="space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Quantité
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={newVariantValues.quantity}
+                    onChange={(event) =>
+                      setNewVariantValues((current) => ({
+                        ...current,
+                        quantity: event.target.value,
+                      }))
+                    }
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                  />
+                </label>
+
+                <label className="space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    Prix d'achat
+                  </span>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newVariantValues.purchase_price}
+                      onChange={(event) =>
+                        setNewVariantValues((current) => ({
+                          ...current,
+                          purchase_price: event.target.value,
+                        }))
+                      }
+                      placeholder="0"
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pr-12 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      DH
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <label className="block space-y-1.5">
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Photo
+                </span>
+                <div className="flex min-h-24 items-center gap-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-orange-500 shadow-sm ring-1 ring-slate-200">
+                    <Camera size={20} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        setNewVariantImage(
+                          event.target.files?.[0] || null
+                        )
+                      }
+                      className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-orange-50 file:px-3 file:py-2 file:text-xs file:font-bold file:text-orange-600 hover:file:bg-orange-100"
+                    />
+                    <p className="mt-2 truncate text-xs text-slate-400">
+                      {newVariantImage
+                        ? newVariantImage.name
+                        : "L'image sera automatiquement convertie en JPEG pour WhatsApp."}
+                    </p>
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50/70 px-5 py-4">
+              <button
+                type="button"
+                onClick={closeAddVariantModal}
+                disabled={isAddingVariant}
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+              >
+                Annuler
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAddVariant}
+                disabled={isAddingVariant}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isAddingVariant ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    Ajout...
+                  </>
+                ) : (
+                  <>
+                    <Plus size={17} />
+                    Ajouter la variante
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
           ADD PRODUCT MODAL
       ===================================================== */}
 
@@ -1072,6 +1801,7 @@ function ProductRows({
   index,
   expanded,
   onToggle,
+  onAddVariant,
   formatMoney,
   editingVariantId,
   editingValues,
@@ -1089,6 +1819,7 @@ function ProductRows({
   index: number;
   expanded: boolean;
   onToggle: () => void;
+  onAddVariant: () => void;
   formatMoney: (value: number) => string;
 
   editingVariantId: number | null;
@@ -1115,6 +1846,14 @@ function ProductRows({
 }) {
   const firstVariant = product.variants[0];
 
+  const outOfStockCount = product.variants.filter(
+    isOutOfStockVariant
+  ).length;
+
+  const lowStockCount = product.variants.filter(
+    isLowStockVariant
+  ).length;
+
   return (
     <>
       {/* =====================================================
@@ -1123,81 +1862,120 @@ function ProductRows({
 
       <tr className="border-b border-slate-200 bg-white">
         <td colSpan={9} className="p-0">
-          <button
-            type="button"
-            onClick={onToggle}
-            className="flex w-full items-center gap-5 px-5 py-5 text-left transition-colors hover:bg-orange-50/40"
-          >
-            {/* # */}
+          <div className="flex w-full items-center gap-3 px-5 py-5">
+            <button
+              type="button"
+              onClick={onToggle}
+              className="flex min-w-0 flex-1 items-center gap-5 text-left"
+            >
+              {/* # */}
 
-            <div className="w-8 shrink-0 text-sm font-semibold text-slate-400">
-              {index + 1}
-            </div>
+              <div className="w-8 shrink-0 text-sm font-semibold text-slate-400">
+                {index + 1}
+              </div>
 
-            {/* PHOTO */}
+              {/* PHOTO */}
 
-            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              {firstVariant?.image_url ? (
-                <img
-                  src={firstVariant.image_url}
-                  alt={product.name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
-                  <Package size={22} />
+              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                {firstVariant?.image_url ? (
+                  <img
+                    src={firstVariant.image_url}
+                    alt={product.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+                    <Package size={22} />
+                  </div>
+                )}
+              </div>
+
+              {/* MODEL */}
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-base font-bold text-slate-900">
+                    {product.name}
+                  </p>
+
+                  <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600">
+                    {product.variants.length} variante
+                    {product.variants.length !== 1
+                      ? "s"
+                      : ""}
+                  </span>
+
+                  {outOfStockCount > 0 && (
+                    <span className="inline-flex items-center rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 ring-1 ring-red-100">
+                      {outOfStockCount} rupture
+                      {outOfStockCount !== 1 ? "s" : ""}
+                    </span>
+                  )}
+
+                  {lowStockCount > 0 && (
+                    <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-100">
+                      {lowStockCount} stock faible
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* MODEL */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                  <span className="text-slate-500">
+                    Quantité totale :
+                    <strong className="ml-1.5 font-bold text-slate-900">
+                      {product.totalQuantity.toLocaleString(
+                        "fr-FR"
+                      )}{" "}
+                      P
+                    </strong>
+                  </span>
 
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-base font-bold text-slate-900">
-                  {product.name}
-                </p>
-
-                <span className="inline-flex items-center rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600">
-                  {product.variants.length} variante
-                  {product.variants.length !== 1
-                    ? "s"
-                    : ""}
-                </span>
+                  <span className="text-slate-500">
+                    Valeur totale :
+                    <strong className="ml-1.5 font-bold text-slate-900">
+                      {formatMoney(
+                        product.totalValue
+                      )}
+                    </strong>
+                  </span>
+                </div>
               </div>
+            </button>
 
-              <div className="mt-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-                <span className="text-slate-500">
-                  Quantité totale :
-                  <strong className="ml-1.5 font-bold text-slate-900">
-                    {product.totalQuantity.toLocaleString(
-                      "fr-FR"
-                    )}{" "}
-                    P
-                  </strong>
-                </span>
+            <button
+              type="button"
+              onClick={onAddVariant}
+              className="hidden h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-bold text-orange-600 transition-colors hover:bg-orange-100 sm:inline-flex"
+              title="Ajouter une variante"
+            >
+              <Plus size={16} />
+              Ajouter une variante
+            </button>
 
-                <span className="text-slate-500">
-                  Valeur totale :
-                  <strong className="ml-1.5 font-bold text-slate-900">
-                    {formatMoney(
-                      product.totalValue
-                    )}
-                  </strong>
-                </span>
-              </div>
-            </div>
-
-            {/* EXPAND */}
-
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-colors">
+            <button
+              type="button"
+              onClick={onToggle}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
+              title={expanded ? "Fermer" : "Ouvrir"}
+            >
               {expanded ? (
                 <ChevronDown size={20} />
               ) : (
                 <ChevronRight size={20} />
               )}
-            </div>
-          </button>
+            </button>
+          </div>
+
+          <div className="border-t border-slate-100 px-5 py-2 sm:hidden">
+            <button
+              type="button"
+              onClick={onAddVariant}
+              className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 text-xs font-bold text-orange-600 transition-colors hover:bg-orange-100"
+            >
+              <Plus size={16} />
+              Ajouter une variante
+            </button>
+          </div>
         </td>
       </tr>
 
@@ -1207,37 +1985,37 @@ function ProductRows({
 
       {expanded && (
         <tr className="border-b border-slate-200 bg-slate-50">
-          <td className="w-14 px-5 py-3" />
+          <td className="w-14 px-5 py-2" />
 
-          <td className="w-24 px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          <td className="w-24 px-5 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
             Photo
           </td>
 
-          <td className="min-w-[190px] px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          <td className="min-w-[190px] px-5 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
             Modèle
           </td>
 
-          <td className="min-w-[150px] px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          <td className="min-w-[150px] px-5 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
             Couleur
           </td>
 
-          <td className="min-w-[120px] px-5 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          <td className="min-w-[120px] px-5 py-2 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400">
             Taille
           </td>
 
-          <td className="min-w-[130px] px-5 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          <td className="min-w-[130px] px-5 py-2 text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">
             Quantité
           </td>
 
-          <td className="min-w-[150px] px-5 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          <td className="min-w-[150px] px-5 py-2 text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">
             Prix d'achat
           </td>
 
-          <td className="min-w-[160px] px-5 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          <td className="min-w-[160px] px-5 py-2 text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">
             Valeur
           </td>
 
-          <td className="w-24 px-5 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">
+          <td className="w-24 px-5 py-2 text-right text-[11px] font-bold uppercase tracking-wide text-slate-400">
             Actions
           </td>
         </tr>
@@ -1248,7 +2026,7 @@ function ProductRows({
       ===================================================== */}
 
       {expanded &&
-        product.variants.map((variant) => {
+        product.variants.map((variant, variantIndex) => {
           const isEditing =
             editingVariantId === variant.id;
 
@@ -1262,20 +2040,24 @@ function ProductRows({
           return (
             <tr
               key={variant.id}
-              className="border-b border-slate-100 bg-white transition-colors hover:bg-slate-50"
+              className={`border-b border-slate-200 transition-colors hover:bg-orange-50/30 ${
+                variantIndex % 2 === 0
+                  ? "bg-white"
+                  : "bg-slate-50/60"
+              }`}
             >
               {/* EMPTY # */}
 
-              <td className="px-5 py-5" />
+              <td className="px-5 py-2.5" />
 
               {/* =================================================
                   PHOTO
               ================================================= */}
 
-              <td className="px-5 py-5">
+              <td className="px-5 py-2.5">
                 <label
                   title="Changer la photo"
-                  className={`group relative block h-14 w-14 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${
+                  className={`group relative block h-10 w-10 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
                     isChangingImage
                       ? "cursor-wait"
                       : "cursor-pointer"
@@ -1356,8 +2138,8 @@ function ProductRows({
                   MODEL
               ================================================= */}
 
-              <td className="px-5 py-5">
-                <span className="text-sm font-semibold text-slate-500">
+              <td className="px-5 py-2.5">
+                <span className="text-[13px] font-semibold text-slate-500">
                   {product.name}
                 </span>
               </td>
@@ -1366,7 +2148,7 @@ function ProductRows({
                   COULEUR
               ================================================= */}
 
-              <td className="px-5 py-5">
+              <td className="px-5 py-2.5">
                 {isEditing ? (
                   <input
                     type="text"
@@ -1382,10 +2164,10 @@ function ProductRows({
                     onClick={(event) =>
                       event.stopPropagation()
                     }
-                    className="h-10 w-full min-w-[120px] rounded-xl border border-orange-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none ring-2 ring-orange-100"
+                    className="h-8 w-full min-w-[120px] rounded-lg border border-orange-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none ring-2 ring-orange-100"
                   />
                 ) : (
-                  <span className="inline-flex min-h-9 items-center rounded-xl bg-slate-50 px-3.5 text-sm font-bold text-slate-700 ring-1 ring-slate-200">
+                  <span className="inline-flex min-h-7 items-center rounded-lg bg-slate-50 px-2.5 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
                     {variant.color}
                   </span>
                 )}
@@ -1395,7 +2177,7 @@ function ProductRows({
                   TAILLE
               ================================================= */}
 
-              <td className="px-5 py-5">
+              <td className="px-5 py-2.5">
                 {isEditing ? (
                   <input
                     type="text"
@@ -1411,10 +2193,10 @@ function ProductRows({
                     onClick={(event) =>
                       event.stopPropagation()
                     }
-                    className="h-10 w-24 rounded-xl border border-orange-300 bg-white px-3 text-center text-sm font-bold text-slate-700 outline-none ring-2 ring-orange-100"
+                    className="h-8 w-20 rounded-lg border border-orange-300 bg-white px-3 text-center text-sm font-bold text-slate-700 outline-none ring-2 ring-orange-100"
                   />
                 ) : (
-                  <span className="inline-flex h-9 min-w-[58px] items-center justify-center rounded-xl bg-slate-50 px-3 text-sm font-bold text-slate-800 ring-1 ring-slate-200">
+                  <span className="inline-flex h-7 min-w-[52px] items-center justify-center rounded-lg bg-slate-50 px-2.5 text-xs font-bold text-slate-800 ring-1 ring-slate-200">
                     {variant.size}
                   </span>
                 )}
@@ -1424,7 +2206,7 @@ function ProductRows({
                   QUANTITÉ
               ================================================= */}
 
-              <td className="px-5 py-5 text-right">
+              <td className="px-5 py-2.5 text-right">
                 {isEditing ? (
                   <input
                     type="number"
@@ -1443,14 +2225,23 @@ function ProductRows({
                     onClick={(event) =>
                       event.stopPropagation()
                     }
-                    className="ml-auto h-10 w-28 rounded-xl border border-orange-300 bg-white px-3 text-right text-sm font-bold text-slate-700 outline-none ring-2 ring-orange-100"
+                    className="ml-auto h-8 w-24 rounded-lg border border-orange-300 bg-white px-3 text-right text-sm font-bold text-slate-700 outline-none ring-2 ring-orange-100"
                   />
+                ) : isOutOfStockVariant(variant) ? (
+                  <span className="inline-flex min-h-7 items-center rounded-lg bg-red-50 px-2.5 text-xs font-bold text-red-700 ring-1 ring-red-200">
+                    0 P · Rupture
+                  </span>
+                ) : isLowStockVariant(variant) ? (
+                  <span className="inline-flex min-h-7 items-center rounded-lg bg-amber-50 px-2.5 text-xs font-bold text-amber-700 ring-1 ring-amber-200">
+                    {getVariantQuantity(
+                      variant
+                    ).toLocaleString("fr-FR")} P · Stock faible
+                  </span>
                 ) : (
-                  <span className="text-[15px] font-bold text-slate-900">
-                    {Number(
-                      variant.quantity || 0
-                    ).toLocaleString("fr-FR")}{" "}
-                    P
+                  <span className="text-sm font-bold text-slate-900">
+                    {getVariantQuantity(
+                      variant
+                    ).toLocaleString("fr-FR")} P
                   </span>
                 )}
               </td>
@@ -1459,7 +2250,7 @@ function ProductRows({
                   PRIX D'ACHAT
               ================================================= */}
 
-              <td className="px-5 py-5 text-right">
+              <td className="px-5 py-2.5 text-right">
                 {isEditing ? (
                   <div className="flex items-center justify-end gap-2">
                     <input
@@ -1481,7 +2272,7 @@ function ProductRows({
                       onClick={(event) =>
                         event.stopPropagation()
                       }
-                      className="h-10 w-28 rounded-xl border border-orange-300 bg-white px-3 text-right text-sm font-bold text-slate-700 outline-none ring-2 ring-orange-100"
+                      className="h-8 w-24 rounded-lg border border-orange-300 bg-white px-3 text-right text-sm font-bold text-slate-700 outline-none ring-2 ring-orange-100"
                     />
 
                     <span className="text-xs font-bold text-slate-400">
@@ -1489,7 +2280,7 @@ function ProductRows({
                     </span>
                   </div>
                 ) : (
-                  <span className="text-[15px] font-bold text-slate-900">
+                  <span className="text-sm font-bold text-slate-900">
                     {formatMoney(
                       Number(
                         variant.purchase_price || 0
@@ -1503,8 +2294,8 @@ function ProductRows({
                   VALEUR
               ================================================= */}
 
-              <td className="px-5 py-5 text-right">
-                <span className="text-[15px] font-bold text-slate-900">
+              <td className="px-5 py-2.5 text-right">
+                <span className="text-sm font-bold text-slate-900">
                   {formatMoney(variantValue)}
                 </span>
               </td>
@@ -1513,7 +2304,7 @@ function ProductRows({
                   ACTIONS
               ================================================= */}
 
-              <td className="px-5 py-5">
+              <td className="px-5 py-2.5">
                 <div className="flex items-center justify-end gap-2">
                   {isEditing ? (
                     <>
@@ -1533,7 +2324,7 @@ function ProductRows({
                           variant.id
                         }
                         title="Enregistrer"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-green-200 bg-green-50 text-green-600 transition-colors hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-green-200 bg-green-50 text-green-600 transition-colors hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {savingVariantId ===
                         variant.id ? (
@@ -1557,7 +2348,7 @@ function ProductRows({
                           variant.id
                         }
                         title="Annuler"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-50"
                       >
                         <X size={17} />
                       </button>
@@ -1582,7 +2373,7 @@ function ProductRows({
                             variant.id
                         }
                         title="Modifier"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Pencil size={16} />
                       </button>
@@ -1605,7 +2396,7 @@ function ProductRows({
                             variant.id
                         }
                         title="Supprimer"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-100 bg-white text-red-500 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-100 bg-white text-red-500 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {deletingVariantId ===
                         variant.id ? (
